@@ -30,6 +30,7 @@ panel's volume use ALSA.
 | Pad numbers | The kernel numbers axes and buttons by their evdev codes, and this firmware's `gamecontrollerdb` gives the RG40XXV's: A 0, B 1, L1 4, R1 5, SELECT 6, START 7, the stick on axes 0 and 1, the D-pad on the hat axes 4 and 5 (`kPadButtonA` ... in `input.cpp`). `OBL_PAD_L1`, `OBL_PAD_R1`, `OBL_PAD_AXIS_X` and `OBL_PAD_AXIS_Y` change the first four; the log says when the pad opened. |
 | Volume | The firmware's volume keys have no handler during a port, so the panel thread reads them (`/dev/input/event*` named `ANBERNIC-keys`), moves ALSA's `lineout volume` on card `hw:0` in 16 steps and draws a bar with the level for 1.5 s. The first start sets half of the console's maximum (the console itself starts at full volume, too loud for the game); the chosen level is kept in `obl_volume.txt` in the game directory, and the console's own level is put back when the game ends. |
 | Intro movie | Goes to the panel like the game's frames (the software renderer's image, read back). |
+| Sprites | Decoding a guest's sheet takes the A53 150-375 ms, and the game decodes it in the frame that first draws the animation. This build decodes animations in a background thread ahead of time (`ui::EnableSpritePrefetch`, [sprites.md](../architecture/sprites.md)): those of objects within half a view of the screen, and the other directions of one that just loaded. A guest that starts a new activity on screen still waits for one decode. |
 
 ## Run
 `tools/handheld/launch.sh` (copied beside `OpenBeach`) sets the environment and starts the game on its own directory (`--game-dir`, no
@@ -51,5 +52,5 @@ runs and the panel stays black. Undo it on `/dev/tty0` and the active terminal: 
 Starting the game from the menu needs none of this.
 
 ## Not done yet
-A way to leave the game from the pad (the in-game menu works). The game decodes a sprite sheet in the frame that first
-draws its animation, which takes the A53 150-375 ms for a guest's sheet and stutters while scrolling.
+A way to leave the game from the pad (the in-game menu works). A guest's new activity on screen still costs one decode of its
+sheet; sheets split by direction in the converter, or a cache of the decoded frames, would shorten it.

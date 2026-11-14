@@ -15,6 +15,7 @@
 #include "platform/display_window.h"
 #include "platform/hidden_window.h"
 #ifdef OBL_HANDHELD
+#include "game/ui/sprite_anim.h"
 #include "platform/cursor.h"
 #include "platform/frame_share.h"
 #include "platform/input.h"
@@ -324,6 +325,10 @@ SDL_Window* CreateSdlGameWindow(void* instance, int clientWidth, int clientHeigh
     g_created = true;
     g_stats.created = true;
     g_stats.icon = SetGameIcon(window);
+#ifdef OBL_HANDHELD
+    // The A53 takes 150-375 ms to decode a guest's sheet: animations decode in the background before they are drawn.
+    ui::EnableSpritePrefetch();
+#endif
     if (!g_stats.icon) OBL_LOG("sdl window: the OpenBeach icon was not set: %s", SDL_GetError());
     // SDL's own window procedure stays: close, focus and input reach the game as SDL events (PumpSdlEvents, input.cpp) and the
     // local cursor is an SDL cursor (cursor.cpp).

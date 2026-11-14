@@ -150,6 +150,7 @@ add_executable(obl_unit_tests
     touch_gestures_test.cpp
     pad_pointer_test.cpp
     frame_bands_test.cpp
+    sprite_slice_test.cpp
     state_helpers_test.cpp
     mp3info_test.cpp
     id3tag_test.cpp
