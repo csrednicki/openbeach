@@ -10,13 +10,13 @@ using namespace obl;
 
 namespace {
 
-const std::string kVideoTab =
-        "        <TABVideoOptions(439, 100, 483, 131, UI3_options_t_video, IGOPT_TIPTEXT_VIDEOTAB)>\n"
-        "        {\n"
-        "            CheckBox(194, 148, 210, 163, UI3_fieldcheckbox, GAME_NUDGE, IGOPT_TIPTEXT_NUDGE)\n"
-        "\n"
-        "            Button(194, 242, 359, 266, UI3_bi_longbutton, IGOPT_VIDEO_RESET, ResetVideoOptions, None, IGOPT_TIPTEXT_RESET_VIDEO)\n"
-        "        }\n";
+// A made-up tab: only the names Apply looks for (the tab, the anchor) and the reset action are those of a real layout.
+const std::string kVideoTab = "  <TABVideoOptions(1, 2, 3, 4, TAB_IMAGE, TAB_TIP)>\n"
+                              "  {\n"
+                              "    CheckBox(10, 20, 30, 40, BOX_IMAGE, GAME_NUDGE, BOX_TIP)\n"
+                              "\n"
+                              "    Button(10, 90, 30, 99, BUTTON_IMAGE, BUTTON_TEXT, ResetVideoOptions, None, BUTTON_TIP)\n"
+                              "  }\n";
 
 } // namespace
 
@@ -61,5 +61,14 @@ OBL_TEST_CASE("own_controls.other_layouts_are_untouched")
     own_controls::SetPadPointer(true);
     const std::string other = "DialogItem BuildPanel(0, 0, 10, 10, X, 1, 1)\n{\n  CheckBox(1, 1, 2, 2, G, GAME_NUDGE, T)\n}\n";
     OBL_CHECK(own_controls::Apply(other) == other); // no Video tab: nothing to attach to
+    own_controls::SetPadPointer(false);
+}
+
+OBL_TEST_CASE("own_controls.anchor_in_a_later_tab_is_not_the_video_tab")
+{
+    own_controls::SetPadPointer(true);
+    const std::string script = "  <TABVideoOptions(1, 2, 3, 4, A, B)>\n  {\n  }\n  <TABAudioOptions(1, 2, 3, 4, A, B)>\n  {\n"
+                               "    CheckBox(10, 20, 30, 40, C, GAME_NUDGE, D)\n  }\n";
+    OBL_CHECK(own_controls::Apply(script) == script);
     own_controls::SetPadPointer(false);
 }
