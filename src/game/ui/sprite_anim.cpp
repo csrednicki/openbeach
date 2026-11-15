@@ -184,18 +184,22 @@ void PrefetchWorker()
     }
 }
 
+// Whether every frame of `a` is loaded, together or by direction.
+bool Complete(const Anim* a)
+{
+    if (!a->m_loaded) return false;
+    if (a->m_allLoaded) return true;
+    for (int d = 0; d < a->m_directions; ++d)
+        if (!a->m_directionData[d]) return false;
+    return true;
+}
+
 // Queues `a` for the worker unless it is loaded whole, prepared or queued already.
 void Request(const Anim* a)
 {
     if (!g_prefetch || a->m_dataOffset >= g_anims.size()) return;
     const PackAnim& p = *g_anims[a->m_dataOffset];
-    if (p.metadataOnly) return;
-    if (a->m_loaded) {
-        if (a->m_allLoaded) return;
-        bool missing = false;
-        for (int d = 0; d < a->m_directions && !missing; ++d) missing = !a->m_directionData[d];
-        if (!missing) return;
-    }
+    if (p.metadataOnly || Complete(a)) return;
     Prefetch& pf = Prefetching();
     {
         std::lock_guard lock(pf.mutex);
@@ -219,6 +223,24 @@ bool TakePrepared(const Anim* a, Prepared& out)
     pf.resultBytes -= out.data.size();
     pf.results.erase(it);
     return true;
+}
+
+// Drops what the worker holds for `a` once the game's thread loaded it whole: a queued job would decode the sheet a second time,
+// and its frames would then wait for nothing until the cap pushed them out. A job being decoded runs on: its result serves the
+// next load of `a` after an unload, or the cap pushes it out.
+void Forget(const Anim* a)
+{
+    if (!g_prefetch) return;
+    Prefetch& pf = Prefetching();
+    std::lock_guard lock(pf.mutex);
+    const uint32_t index = a->m_dataOffset;
+    if (pf.decoding != index && pf.pending.erase(index))
+        pf.queue.erase(
+                std::remove_if(pf.queue.begin(), pf.queue.end(), [&](const Job& job) { return job.index == index; }), pf.queue.end());
+    if (const auto it = pf.results.find(index); it != pf.results.end()) {
+        pf.resultBytes -= it->second.data.size();
+        pf.results.erase(it);
+    }
 }
 
 // Prepared frames into `a`, as LoadAll or LoadDirection load them; directions already loaded stay as they are.
@@ -259,7 +281,11 @@ uint8_t* GetFrame(Anim* a, int frame, int d)
             else
                 LoadDirection(a, d);
         }
-        Request(a); // the directions still missing, from one decode in the background
+        // The directions still missing come from one decode in the background; a whole animation needs nothing more.
+        if (Complete(a))
+            Forget(a);
+        else
+            Request(a);
     }
     uint32_t offset = a->m_frameOffsets[a->m_frameIndices[d * a->m_frames + frame]];
     return a->m_allLoaded ? a->m_allData + offset : a->m_directionData[d] + (offset - a->m_directionOffsets[d]);
