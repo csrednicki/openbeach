@@ -5,7 +5,8 @@ cd "$(dirname "$0")" || exit 1
 # The first start plays at the panel's 640x480; the in-game options still offer the other sizes and keep the choice.
 # shortcut: only an INI without a resolution is seeded; one that has a [Video] section without ResWidth is left alone.
 if ! grep -q '^ResWidth=' BeachLife.ini 2>/dev/null && ! grep -q '^\[Video\]' BeachLife.ini 2>/dev/null; then
-    printf '[Video]\r\nResWidth=640\r\nResHeight=480\r\n' >> BeachLife.ini
+    # The leading line break keeps the section off the last line of an INI that ends without one.
+    printf '\r\n[Video]\r\nResWidth=640\r\nResHeight=480\r\n' >> BeachLife.ini
 fi
 
 # SDL3 has no video driver here: its offscreen window only carries the events, and the game's panel thread shows the frames

@@ -386,6 +386,8 @@ void PanelMain()
         while (keys >= 0 && ::read(keys, &key, sizeof(key)) == static_cast<ssize_t>(sizeof(key))) {
             // A press or a held repeat moves the level one step.
             if (key.type != EV_KEY || key.value == 0 || (key.code != KEY_VOLUMEUP && key.code != KEY_VOLUMEDOWN)) continue;
+            // Without the mixer the bar would show a level nothing set, and the saved file would start the next run loud.
+            if (!volume.Available()) continue;
             volumeStep = volume.Change(key.code == KEY_VOLUMEUP ? 1 : -1);
             overlayUntil = Clock::now() + kOverlayTime;
             overlay = dirty = true;

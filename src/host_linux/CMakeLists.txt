@@ -210,6 +210,11 @@ if(OBL_LINUX_WINDOWED)
         # Only the panel sees SDL2's headers: the rest of the game includes SDL3's, whose names they share.
         set_source_files_properties(${REPO}/src/platform/frame_share.cpp PROPERTIES INCLUDE_DIRECTORIES
             "${OBL_SDL2_INCLUDE_DIR};${ALSA_INCLUDE_DIR}")
+        # The panel's volume calls ALSA's mixer itself, so the game links the library rather than relying on SDL to bring it.
+        if(NOT EXISTS "${ALSA_LIBRARY}")
+            message(FATAL_ERROR "OBL_HANDHELD needs the device's libasound.so: ALSA_LIBRARY (docs/build/handheld.md)")
+        endif()
+        target_link_libraries(OpenBeach PRIVATE "${ALSA_LIBRARY}" ${CMAKE_DL_LIBS})
     endif()
     target_include_directories(OpenBeach PRIVATE ${REPO}/src/launcher)
     # The development default of --game-dir, as in the Windows build.
