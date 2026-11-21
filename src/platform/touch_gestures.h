@@ -16,10 +16,10 @@
 
 namespace obl::platform {
 
-// Where the backend handles fingers itself: the browser, which phones and tablets reach. Native hosts keep SDL's touch-to-mouse
-// events, so a touch screen there works as before.
+// Where the backend handles fingers itself: the browser, which phones and tablets reach, and Android. The other native hosts keep
+// SDL's touch-to-mouse events, so a touch screen there works as before.
 constexpr bool kTouchGestures =
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
         true;
 #else
         false;

@@ -87,6 +87,12 @@ void PlaceGameWindow(void* window, int width, int height)
     // would shrink the back buffer below the game's size.
     SDL_SetWindowSize(sdl, width, height);
     return;
+#elif defined(__ANDROID__)
+    // The activity always covers the screen; fullscreen also hides the status and navigation bars (immersive mode). The
+    // presenter and the input mapping letterbox the game into it.
+    (void)width, (void)height;
+    SDL_SetWindowFullscreen(sdl, true);
+    return;
 #endif
     SDL_DisplayID display = SDL_GetDisplayForWindow(sdl);
     if (!display) display = SDL_GetPrimaryDisplay();
