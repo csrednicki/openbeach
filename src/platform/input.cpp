@@ -626,6 +626,10 @@ public:
         SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_WARP_MOTION, "0");
         // Fingers are the gestures' (touch_gestures.h); SDL must not also turn them into mouse events.
         if (kTouchGestures) SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
+#ifdef __ANDROID__
+        // Back reaches the game as Esc (input_mapping.cpp) instead of closing the activity.
+        SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
+#endif
 #ifdef OBL_HANDHELD
         g_padL1 = PadSetting("OBL_PAD_L1", g_padL1, g_padButtons.size());
         g_padR1 = PadSetting("OBL_PAD_R1", g_padR1, g_padButtons.size());

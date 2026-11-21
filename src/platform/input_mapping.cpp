@@ -100,7 +100,12 @@ constexpr auto kSdlToKeyCode = [] {
     map[SDL_SCANCODE_MEDIA_SELECT] = input::KeyCode::MediaSelect;
     map[SDL_SCANCODE_AC_SEARCH] = input::KeyCode::BrowserSearch;
     map[SDL_SCANCODE_AC_HOME] = input::KeyCode::BrowserHome;
+#ifdef __ANDROID__
+    // A phone has no Esc key: the system's back button or gesture leaves a mode and opens the game's menu (docs/build/android.md).
+    map[SDL_SCANCODE_AC_BACK] = input::KeyCode::Escape;
+#else
     map[SDL_SCANCODE_AC_BACK] = input::KeyCode::BrowserBack;
+#endif
     map[SDL_SCANCODE_AC_FORWARD] = input::KeyCode::BrowserForward;
     map[SDL_SCANCODE_AC_STOP] = input::KeyCode::BrowserStop;
     map[SDL_SCANCODE_AC_REFRESH] = input::KeyCode::BrowserRefresh;
