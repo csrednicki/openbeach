@@ -69,7 +69,10 @@ bool SDLCALL DropEvent(void*, SDL_Event* event)
         ++g_eventCounts.other;
         return true;
     case SDL_EVENT_QUIT:
-    case SDL_EVENT_WINDOW_CLOSE_REQUESTED: ++g_eventCounts.other; return true; // taken by PumpSdlEvents
+    case SDL_EVENT_TERMINATING:
+    case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+    case SDL_EVENT_RENDER_TARGETS_RESET:
+    case SDL_EVENT_RENDER_DEVICE_RESET: ++g_eventCounts.other; return true; // taken by PumpSdlEvents
     case SDL_EVENT_WINDOW_MOUSE_LEAVE: ++g_eventCounts.other; return true;
     case SDL_EVENT_MOUSE_MOTION: ++g_eventCounts.mouseMotion; return true;
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
@@ -161,7 +164,12 @@ bool EnsureTexture(SDL_PixelFormat format, int width, int height)
     g_texture = SDL_CreateTexture(g_renderer, textureFormat, SDL_TEXTUREACCESS_STREAMING, width, height);
     if (!g_texture) return Fail("SDL_CreateTexture");
     SDL_SetTextureBlendMode(g_texture, SDL_BLENDMODE_NONE);
+#ifdef __ANDROID__
+    // Fractional scaling on phone screens breaks pixel fonts under nearest sampling (docs/build/android.md).
+    SDL_SetTextureScaleMode(g_texture, SDL_SCALEMODE_LINEAR);
+#else
     SDL_SetTextureScaleMode(g_texture, SDL_SCALEMODE_NEAREST);
+#endif
     g_sourceFormat = format;
     g_stats.textureWidth = width;
     g_stats.textureHeight = height;
@@ -312,6 +320,9 @@ SDL_Window* CreateSdlGameWindow(void* instance, int clientWidth, int clientHeigh
     // A resizable window follows the canvas's CSS size, which the page changes with the tab: the back buffer would then
     // be stretched by the presenter (nearest, at a fractional factor) instead of by the browser.
     SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN, false);
+#elif defined(__ANDROID__)
+    SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_FULLSCREEN_BOOLEAN, true);
+    SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN, false);
 #else
     SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN, true);
 #endif
@@ -324,12 +335,16 @@ SDL_Window* CreateSdlGameWindow(void* instance, int clientWidth, int clientHeigh
     g_window = window;
     g_created = true;
     g_stats.created = true;
+#ifndef __ANDROID__
     g_stats.icon = SetGameIcon(window);
+#endif
 #ifdef OBL_HANDHELD
     // The A53 takes 150-375 ms to decode a guest's sheet: animations decode in the background before they are drawn.
     ui::EnableSpritePrefetch();
 #endif
+#ifndef __ANDROID__
     if (!g_stats.icon) OBL_LOG("sdl window: the OpenBeach icon was not set: %s", SDL_GetError());
+#endif
     // SDL's own window procedure stays: close, focus and input reach the game as SDL events (PumpSdlEvents, input.cpp) and the
     // local cursor is an SDL cursor (cursor.cpp).
 #ifdef _WIN32
@@ -429,7 +444,15 @@ SdlPumpResult PumpSdlEvents()
     // Taken here, before the input adapter drains its range (which contains the window events), so both the intro movie
     // and the game loop see them. The close button hides the window SDL owns; DestroySdlGameWindow ends it after the game.
     SDL_Event event;
-    while (SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_EVENT_QUIT, SDL_EVENT_QUIT) > 0) g_quitRequested = true;
+    while (SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_EVENT_QUIT, SDL_EVENT_TERMINATING) > 0) g_quitRequested = true;
+    while (SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_EVENT_RENDER_TARGETS_RESET, SDL_EVENT_RENDER_DEVICE_RESET) > 0) {
+        // Android can recreate the GLES surface after background/resume; drop the texture so the next frame recreates it.
+        if (g_texture) {
+            SDL_DestroyTexture(g_texture);
+            g_texture = nullptr;
+            g_sourceFormat = SDL_PIXELFORMAT_UNKNOWN;
+        }
+    }
     while (g_closePosted ||
             SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_EVENT_WINDOW_CLOSE_REQUESTED, SDL_EVENT_WINDOW_CLOSE_REQUESTED) > 0) {
         if (g_closePosted) {

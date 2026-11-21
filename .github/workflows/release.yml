@@ -6,8 +6,8 @@ name: Release
 on:
   push:
     branches: [main]
-  # By hand: builds, tests and packs the Linux, Windows and macOS releases as workflow artifacts only (no release, no upload
-  # to one).
+  # By hand: builds, tests and packs the Linux, Windows, macOS and Android releases as workflow artifacts only (no release, no
+  # upload to one).
   workflow_dispatch:
 
 permissions:
@@ -178,3 +178,63 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "$TAG" build/dist/openbeach-*.dmg --repo "$GITHUB_REPOSITORY" --clobber
+
+  # The Android arm64 APK (docs/build/android.md, docs/build/releases.md), experimental: cross-compiled with the Android NDK
+  # and packed with the SDK's own tools (no Gradle), signed with the release keystore when secrets are configured.
+  android:
+    needs: release
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.release.outputs.release_created == 'true') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TAG: ${{ needs.release.outputs.tag_name }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Packages and Android SDK
+        run: |
+          sudo apt-get -o Acquire::Retries=3 update -q
+          sudo apt-get install -y -q --no-install-recommends ninja-build
+          pip install pillow
+          sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          if [ ! -d "$sdk/platforms/android-35" ] || [ ! -d "$sdk/build-tools" ]; then
+            yes | "$sdk/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" >/dev/null
+          fi
+      - name: Prepare release keystore
+        id: keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            ks="$RUNNER_TEMP/openbeach-release.keystore"
+            printf '%s' "$KEYSTORE_B64" | base64 -d > "$ks"
+            chmod 600 "$ks"
+            echo "path=$ks" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build, package and smoke test APK
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
+          ANDROID_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          version="${TAG:-$(cat version.txt)-dev.$(git rev-parse --short HEAD)}"
+          OBL_RELEASE_VERSION="$version" bash tools/ci/android_release.sh
+      - name: Remove temporary keystore
+        if: always() && steps.keystore.outputs.path != ''
+        run: rm -f "${{ steps.keystore.outputs.path }}"
+      - name: Workflow artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-release
+          path: build/dist/*.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Attach to the release
+        if: needs.release.outputs.release_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" build/dist/openbeach-*.apk --repo "$GITHUB_REPOSITORY" --clobber

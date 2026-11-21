@@ -124,16 +124,16 @@ void RestoreSdlMousePosition()
 }
 
 // Alt+Enter switches between the window and fullscreen; the game sees neither the Enter press nor its release.
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
 bool g_fullscreenToggle; // asked for in this drain
 bool g_toggleEnterDown;
 #endif
 
 bool TakeFullscreenToggle(const SDL_KeyboardEvent& key)
 {
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
     (void)key;
-    return false; // the page has its own button, and the browser leaves fullscreen on Esc
+    return false; // the page has its own button, and Android is always fullscreen
 #else
     if (key.scancode != SDL_SCANCODE_RETURN && key.scancode != SDL_SCANCODE_KP_ENTER) return false;
     if (key.down && (key.mod & SDL_KMOD_ALT)) {
@@ -152,7 +152,7 @@ bool TakeFullscreenToggle(const SDL_KeyboardEvent& key)
 // Placed after the drain: the placement waits for the window manager, which pumps SDL's queue.
 void ApplyFullscreenToggle()
 {
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
     if (!g_fullscreenToggle) return;
     g_fullscreenToggle = false;
     const ui::Renderer* renderer = game::GetRenderer();
@@ -189,7 +189,7 @@ bool g_mouseConfined; // what SDL was last asked for
 
 void UpdateMouseConfinement()
 {
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
     SDL_Window* window = SDL_GetWindowFromID(SdlGameWindowId());
     if (!window) return;
     const bool want = WantMouseConfined(config::Get().confineMouse, g_hidden, InGameplay(), InGameOptionsOpen(), PlayerPaused());
@@ -523,7 +523,10 @@ void ReadSdlTouchEvents()
     SDL_Event event;
     SDL_Window* window = SDL_GetWindowFromID(SdlGameWindowId());
     int width = 0, height = 0;
-    if (window) SDL_GetWindowSize(window, &width, &height);
+    if (window) SDL_GetWindowSizeInPixels(window, &width, &height);
+#ifdef __ANDROID__
+    if (window) g_touch.SetScale(SDL_GetWindowDisplayScale(window));
+#endif
     g_touch.SetAim(CurrentTouchAim());
     // Drained even when unused (native hosts), so that the queue does not fill up.
     while (SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_EVENT_FINGER_DOWN, SDL_EVENT_FINGER_CANCELED) > 0) {
@@ -643,7 +646,11 @@ public:
     bool Poll(ui::Input& input) override
     {
         ReadSdlInputEvents(&input);
+#ifdef __ANDROID__
+        return g_inputFocused;
+#else
         return g_inputFocused && (g_hidden || kHandheld || SDL_GetKeyboardFocus() == SDL_GetWindowFromID(SdlGameWindowId()));
+#endif
     }
 
     void UpdateKeys(ui::Input& input) override

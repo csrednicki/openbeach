@@ -88,7 +88,8 @@ def stage_macos(version, out, binaries):
     scripts = HERE / "macos"
     shutil.copyfile(scripts / "openbeach-launcher", macos / "openbeach-launcher")
     shutil.copyfile(scripts / "import.sh", resources / "import.sh")
-    for script in (macos / "openbeach-launcher", resources / "import.sh"):
+    shutil.copyfile(scripts / "export-android.sh", resources / "export-android.sh")
+    for script in (macos / "openbeach-launcher", resources / "import.sh", resources / "export-android.sh"):
         make_executable(script)
     plist = (scripts / "Info.plist.in").read_text(encoding="utf-8")
     plist = plist.replace("@BUNDLE_VERSION@", bundle_version(version)).replace("@VERSION@", version)

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OpenBeach</string>
+    <string name="subtitle">Motore open source per Beach Life (2002)</string>
+    <string name="status_ready">I dati di gioco sono importati e pronti.</string>
+    <string name="status_missing">Nessun dato di gioco importato. Importa un pacchetto dati (.zip) creato su PC oppure prova la demo L0 integrata.</string>
+    <string name="btn_play">Gioca a Beach Life</string>
+    <string name="btn_import_zip">Importa pacchetto dati (.zip)</string>
+    <string name="btn_demo">Gioca alla demo (L0)</string>
+    <string name="btn_export_log">Esporta log (openbeach.log)</string>
+    <string name="hint_pc_export">Su PC: importa la tua copia con OpenBeach, esegui ExportForAndroid.cmd (Windows) o export-android.sh (Linux/macOS), copia openbeach-data.zip su questo dispositivo e selezionalo sopra. Dopo l\'importazione puoi eliminare il file .zip.</string>
+    <string name="import_running">Importazione dati… (%1$d file)</string>
+    <string name="import_running_pct">Importazione dati… %1$d%% (%2$d file)</string>
+    <string name="import_done">Importazione completata (%1$d file). Ora puoi eliminare il file .zip.</string>
+    <string name="import_error_missing_pack">Questo file .zip non contiene un pacchetto convertito (packs/base/pack.json). Converti prima la copia su PC.</string>
+    <string name="import_error_generic">Importazione fallita: %1$s</string>
+    <string name="log_exported">Log salvato.</string>
+    <string name="log_export_failed">Impossibile salvare il log: %1$s</string>
+    <string name="shortcut_manage_short">Dati</string>
+    <string name="shortcut_manage_long">Gestisci dati / Demo</string>
+</resources>

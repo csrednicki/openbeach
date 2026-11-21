@@ -21,7 +21,7 @@ It works on Windows, macOS, Linux and Android, in any modern browser.</p>
   <img src="https://img.shields.io/badge/Linux-supported-0078D4?logo=linux&logoColor=white" alt="Linux: supported">
   <img src="https://img.shields.io/badge/Browser-supported-0078D4?logo=googlechrome&logoColor=white" alt="Browser">
   <img src="https://img.shields.io/badge/macOS-experimental-FF7A59?logo=apple&logoColor=white" alt="macOS: experimental">
-  <img src="https://img.shields.io/badge/Mobile-experimental-FF7A59?logo=android&logoColor=white" alt="Mobile: experimental">
+  <img src="https://img.shields.io/badge/Android-experimental-FF7A59?logo=android&logoColor=white" alt="Android: experimental">
 </p>
 
 <p align="center">
@@ -29,12 +29,13 @@ It works on Windows, macOS, Linux and Android, in any modern browser.</p>
   <img src="https://img.shields.io/badge/SDL-3-1D4F91" alt="SDL3">
   <img src="https://img.shields.io/badge/WebAssembly-wasm32-654FF0?logo=webassembly&logoColor=white" alt="WebAssembly: wasm32">
   <img src="https://img.shields.io/badge/x86--64-64--bit-555555" alt="x86-64">
+  <img src="https://img.shields.io/badge/arm64-64--bit-555555" alt="arm64">
 </p>
 
 # OpenBeach
 
 An open reimplementation of **Beach Life** (Deep Red Games / Eidos, 2002), the beach-resort management game, written in
-C++20 with SDL3. It runs on Windows, on Linux, on macOS (experimental) and in the browser, and has a headless simulation
+C++20 with SDL3. It runs on Windows, on Linux, on macOS and Android (experimental) and in the browser, and has a headless simulation
 that plays whole scenarios without a window, graphics or sound.
 
 <p align="center"><img src="assets/screenshots/browser.jpg" alt="OpenBeach running the game in a browser tab" width="640"></p>
@@ -57,11 +58,14 @@ data. It is what the automated tests use, and it runs on the same mechanics as t
 
 ## Download
 Every [release](https://github.com/h4570/openbeach/releases) has a Windows x64 installer and zip, a Linux x86-64
-tarball (glibc 2.35+: Debian 12, Ubuntu 22.04 and later) and an experimental macOS disk image for Apple silicon (macOS
-13.3+). The installer asks for the `.iso` of your CD, imports it and adds the shortcuts. On a Mac, drag OpenBeach from the
-`.dmg` onto Applications and start it: it asks for your `.iso` on the first start. From an archive, follow `README.<language>.txt` (in the six languages of the game): drag your copy
-onto `Import.cmd` (`import.sh` on Linux) once, then start `Play.cmd`. `AGENTS.md` beside it tells an AI agent
-how to do it for you ([release archives](docs/build/releases.md)).
+tarball (glibc 2.35+: Debian 12, Ubuntu 22.04 and later), an experimental macOS disk image for Apple silicon (macOS
+13.3+) and an experimental Android arm64 APK (Android 8.0+). The installer asks for the `.iso` of your CD, imports it and
+adds the shortcuts. On a Mac, drag OpenBeach from the `.dmg` onto Applications and start it: it asks for your `.iso` on the
+first start. On Android, install the `.apk` to try the built-in L0 demo, or convert your copy on PC, run
+`ExportForAndroid.cmd` (`export-android.sh` on Linux/macOS) to pack `openbeach-data.zip`, copy it to your phone and import
+it inside the app ([Android build](docs/build/android.md)). From an archive, follow `README.<language>.txt` (in the six
+languages of the game): drag your copy onto `Import.cmd` (`import.sh` on Linux) once, then start `Play.cmd`. `AGENTS.md`
+beside it tells an AI agent how to do it for you ([release archives](docs/build/releases.md)).
 
 ### Saves of the original game
 Old `save<N>.dat` files (the original game keeps them in the `SaveGames` folder of its installation) carry over to a

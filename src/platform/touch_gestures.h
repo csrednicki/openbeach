@@ -54,6 +54,8 @@ public:
     void FingerUp(int64_t id, float x, float y, uint32_t ms);
     // What the GUI is doing now; it applies from the next gesture.
     void SetAim(TouchAim aim) { m_nextAim = aim; }
+    // Display pixel scale (1 on 1x screens, ~2-3 on high-DPI phones): keeps slop and wheel notches proportional in mm.
+    void SetScale(float scale) { m_scale = scale > 1.0f ? scale : 1.0f; }
     // Time passing with the fingers where they are: a finger held still long enough turns into a left button hold.
     void Tick(uint32_t ms);
     // The window lost focus or SDL cancelled the touch: whatever is held goes up.
@@ -126,6 +128,7 @@ private:
     float m_startX = 0, m_startY = 0; // where the gesture began (the primary finger; the centroid of Two)
     float m_lastX = 0, m_lastY = 0; // the last position the gesture used
     uint32_t m_startMs = 0;
+    float m_scale = 1.0f;
     TouchAim m_nextAim = TouchAim::None;
     TouchAim m_aim = TouchAim::None; // of the gesture under way
 };
@@ -174,7 +177,7 @@ inline void TouchGestures::FingerMove(int64_t id, float x, float y, uint32_t ms)
             m_lastY = y;
             break;
         }
-        if (Distance(x, y, m_startX, m_startY) <= kSlop) break;
+        if (Distance(x, y, m_startX, m_startY) <= kSlop * m_scale) break;
         // Moved: a camera drag from where the finger went down, carrying the motion made so far.
         m_mode = Mode::Pan;
         Emit(TouchAction::Kind::Move, m_startX, m_startY);
@@ -199,9 +202,9 @@ inline void TouchGestures::FingerMove(int64_t id, float x, float y, uint32_t ms)
     case Mode::Two: {
         float cx, cy;
         Centroid(cx, cy);
-        if (Distance(cx, cy, m_startX, m_startY) <= kSlop) break;
+        if (Distance(cx, cy, m_startX, m_startY) <= kSlop * m_scale) break;
         m_mode = Mode::Scroll;
-        Emit(TouchAction::Kind::Wheel, 0, (cy - m_startY) / kPixelsPerNotch);
+        Emit(TouchAction::Kind::Wheel, 0, (cy - m_startY) / (kPixelsPerNotch * m_scale));
         m_lastX = cx;
         m_lastY = cy;
         break;
@@ -209,7 +212,7 @@ inline void TouchGestures::FingerMove(int64_t id, float x, float y, uint32_t ms)
     case Mode::Scroll: {
         float cx, cy;
         Centroid(cx, cy);
-        Emit(TouchAction::Kind::Wheel, 0, (cy - m_lastY) / kPixelsPerNotch);
+        Emit(TouchAction::Kind::Wheel, 0, (cy - m_lastY) / (kPixelsPerNotch * m_scale));
         m_lastX = cx;
         m_lastY = cy;
         break;

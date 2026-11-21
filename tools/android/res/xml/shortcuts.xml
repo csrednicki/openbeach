@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="manage_data"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_manage_short"
+        android:shortcutLongLabel="@string/shortcut_manage_long">
+        <intent
+            android:action="org.openbeach.game.MANAGE_DATA"
+            android:targetPackage="org.openbeach.game"
+            android:targetClass="org.openbeach.game.LauncherActivity" />
+    </shortcut>
+</shortcuts>

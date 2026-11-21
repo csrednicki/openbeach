@@ -23,10 +23,13 @@ whatever a release needs runs in this file, after `release` and on its outputs `
 - `windows`: builds the Windows zip and installer on `windows-2025`, runs the same L0 references, starts the packed game
   and the silently installed one hidden and attaches both;
 - `macos` (experimental): builds the arm64 disk image on `macos-15`, runs the same L0 references, starts the demo from
-  the packed app and attaches the `.dmg`.
+  the packed app and attaches the `.dmg`;
+- `android` (experimental): cross-compiles `libmain.so` for `arm64-v8a` on `ubuntu-24.04`, packages and signs the APK
+  without Gradle, checks its manifest, ELF 16 KB alignment and signature (`tools/ci/android_smoke.py`) and attaches the
+  `.apk` ([android.md](android.md)).
 
-By hand (`workflow_dispatch`) only `linux`, `windows` and `macos` run and keep the archives as the workflow artifacts
-`linux-release`, `windows-release` and `macos-release`.
+By hand (`workflow_dispatch`) only `linux`, `windows`, `macos` and `android` run and keep the archives as the workflow
+artifacts `linux-release`, `windows-release`, `macos-release` and `android-release`.
 
 The CI run started after a release replaces the push run of the same commit, so a merged release pull request publishes
 the site; a newer push would cancel it too, and the site then needs the run by hand.
