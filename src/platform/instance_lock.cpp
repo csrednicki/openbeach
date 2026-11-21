@@ -32,6 +32,9 @@ int g_file = -1;
 
 void SetInstanceLockDirectory(const Text16& gameDir)
 {
+#ifdef __ANDROID__
+    (void)gameDir; // Android enforces a single app instance, and temp_directory_path() (/tmp) is not writable there.
+#else
     // FNV-1a over the lower-cased directory: stable for one directory, different between directories.
     uint32_t hash = 2166136261u;
     for (Char16 c : gameDir) {
@@ -43,11 +46,14 @@ void SetInstanceLockDirectory(const Text16& gameDir)
     std::error_code error;
     g_path = std::filesystem::temp_directory_path(error) / name;
     OBL_LOG("instance lock: '%s'", g_path.string().c_str());
+#endif
 }
 
 bool AcquireInstanceLock()
 {
-#ifdef _WIN32
+#ifdef __ANDROID__
+    return true;
+#elif defined(_WIN32)
     // No sharing: a second open fails while this handle lives; the system closes it when the process ends.
     g_file = CreateFileW(g_path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_ALWAYS, FILE_FLAG_DELETE_ON_CLOSE, nullptr);
     return g_file != INVALID_HANDLE_VALUE;
@@ -63,7 +69,9 @@ bool AcquireInstanceLock()
 
 void ReleaseInstanceLock()
 {
-#ifdef _WIN32
+#ifdef __ANDROID__
+    return;
+#elif defined(_WIN32)
     if (g_file != INVALID_HANDLE_VALUE) CloseHandle(g_file);
     g_file = INVALID_HANDLE_VALUE;
 #else

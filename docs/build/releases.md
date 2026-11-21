@@ -1,7 +1,7 @@
 # Release archives
 
-Every GitHub release carries a player's archive per system, a Windows installer and an experimental macOS disk image,
-built by `.github/workflows/release.yml` ([ci.md](ci.md#release-workflow)):
+Every GitHub release carries a player's archive per system, a Windows installer, an experimental macOS disk image and an
+experimental Android APK, built by `.github/workflows/release.yml` ([ci.md](ci.md#release-workflow)):
 
 | Asset | Job |
 |---|---|
@@ -9,6 +9,7 @@ built by `.github/workflows/release.yml` ([ci.md](ci.md#release-workflow)):
 | `openbeach-<version>-windows-x64-installer.exe` | `windows`, from the same staged directory as the zip ([Installer](#installer)) |
 | `openbeach-<version>-linux-x86_64.tar.gz` | `linux` |
 | `openbeach-<version>-macos-arm64.dmg` | `macos`, experimental ([macOS](#macos)) |
+| `openbeach-<version>-android-arm64.apk` | `android`, experimental ([Android](#android)) |
 
 No debug info is published: the PDBs stay in the build tree, and the Linux and macOS binaries are stripped (the exported
 symbols stay, so a crash report still names exported functions).
@@ -21,7 +22,7 @@ The archive puts the guides at the top, so a player sees where to start:
 | `README.<language>.txt` | the steps for people, one file per game language (`tools/ci/release/README.<language>.txt.in`) |
 | `AGENTS.md` | the same steps for an AI agent, in English (`tools/ci/release/AGENTS.md.in`) |
 | `game/OpenBeach[.exe]`, `game/obl-convert[.exe]` | the game and the converter (Linux: stripped) |
-| `game/Import.cmd`, `Play.cmd`, `Demo.cmd`, `scripts/import.ps1` (Windows); `game/import.sh`, `play.sh`, `demo.sh` (Linux) | the player's commands (`tools/ci/release/<windows\|linux>/`) |
+| `game/Import.cmd`, `Play.cmd`, `Demo.cmd`, `ExportForAndroid.cmd`, `scripts/import.ps1`, `scripts/export_android.ps1` (Windows); `game/import.sh`, `play.sh`, `demo.sh`, `export-android.sh` (Linux) | the player's commands (`tools/ci/release/<windows\|linux>/`) |
 | `game/userdata/` | the game directory of the player's copy, empty until the import |
 | `game/l0/packs/l0/` | the demo's game directory with the L0 pack (`OBL_PACK=l0`) |
 | `game/LICENSE`, `game/THIRD_PARTY_NOTICES.md` | the licences |
@@ -74,7 +75,7 @@ holds `OpenBeach.app`, a link to `/Applications` (the player drags the app onto 
 | `Contents/Info.plist` | `tools/ci/release/macos/Info.plist.in`; `CFBundleShortVersionString` is the version up to three numbers |
 | `Contents/MacOS/openbeach-launcher` | the bundle's executable, a bash 3.2 script (`tools/ci/release/macos/`) |
 | `Contents/MacOS/OpenBeach`, `obl-convert` | the game and the converter (stripped) |
-| `Contents/Resources/import.sh` | the import, like Linux's, with `hdiutil attach` for a disc image |
+| `Contents/Resources/import.sh`, `export-android.sh` | the import, like Linux's, with `hdiutil attach` for a disc image, and the Android data packager |
 | `Contents/Resources/l0/packs/l0/` | the demo's L0 pack |
 | `Contents/Resources/openbeach.icns`, `LICENSE`, `THIRD_PARTY_NOTICES.md` | the icon (the 256 px PNG as `ic08`) and the licences |
 
@@ -94,6 +95,25 @@ starts the demo (`open -a OpenBeach --args --demo`).
 **Signing.** There is no Developer ID: `codesign --sign -` signs the bundle ad hoc (arm64 runs no unsigned code), so
 Gatekeeper refuses the first start of a downloaded copy and the player allows it once in System Settings, Privacy &
 Security, "Open Anyway" (README). A Developer ID and notarization would remove that step.
+
+## Android
+Experimental: `arm64-v8a` only, Android 8.0 (API 26) or newer, targeting API 35 with 16 KB page-size alignment
+([android.md](android.md)). Built by `bash tools/ci/android_release.sh` (which wraps `tools/obl_android.py` and
+`tools/ci/android_smoke.py`) on `ubuntu-24.04` without Gradle:
+
+- **Bundle:** `lib/arm64-v8a/libmain.so` (stripped, SDL3 static + `c++_static`), `classes.dex` (`LauncherActivity`,
+  `DataPackageImporter`, `OpenBeachActivity` and SDL3's Java layer), `assets/l0/packs/l0/` (the demo), `assets/LICENSE`
+  and `assets/THIRD_PARTY_NOTICES.md`.
+- **Player data:** the converter runs on PC; `ExportForAndroid.cmd` (Windows) or `export-android.sh` (Linux/macOS) packs
+  `userdata/` into an uncompressed `openbeach-data.zip`. On the device, `LauncherActivity` imports that `.zip` through
+  Android's file picker into internal `files/userdata/` (preserving existing `SaveGames/`), or launches the L0 demo.
+- **Signing:** `.github/workflows/release.yml` signs with the release keystore from `ANDROID_KEYSTORE_BASE64` (and
+  `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`) so updates keep saves and imported data; without
+  those secrets it falls back to a debug keystore.
+- **Smoke check:** `tools/ci/android_smoke.py` verifies `apksigner verify`, `zipalign -c -p 4`, `aapt2 dump badging`,
+  required assets, absence of original game data and `libmain.so`'s AArch64 16 KB `PT_LOAD` alignment. Real-device launch,
+  GLES presentation, touch gestures and `.zip` import are not covered in CI (GitHub Linux runners have no nested KVM for
+  arm64 emulation).
 
 ## Icons
 The OpenBeach mark (`assets/logo/openbeach-mark.svg`) is the program's icon everywhere: `tools/make_icons.py` renders
@@ -162,9 +182,10 @@ Gatekeeper on a downloaded copy, real input, a real audio device, Wayland and a 
 
 ## Testing without a release
 Run the workflow by hand (`gh workflow run release.yml --ref <branch>`): the `release` job is skipped, and `linux`,
-`windows` and `macos` build, test and pack, then keep the archives (and the installer) as the workflow artifacts
-`linux-release`, `windows-release` and `macos-release` (14 days) with the version `<version.txt>-dev.<commit>`. Only a release run attaches them to the release
-(`gh release upload <tag> --clobber`). Locally: `./tools/ci/windows_release.ps1 [-SkipTests]`, and in WSL
-`bash tools/ci/linux_release.sh` (an LF copy of the checkout, [../testing/unit-tests.md](../testing/unit-tests.md)), and on a
-Mac with Xcode's command line tools, CMake and Ninja `bash tools/ci/macos_release.sh` (`OBL_SKIP_TESTS=1` skips the L0
-references).
+`windows`, `macos` and `android` build, test and pack, then keep the archives (installer, disk image and APK) as the
+workflow artifacts `linux-release`, `windows-release`, `macos-release` and `android-release` (14 days) with the version
+`<version.txt>-dev.<commit>`. Only a release run attaches them to the release (`gh release upload <tag> --clobber`).
+Locally: `./tools/ci/windows_release.ps1 [-SkipTests]`, in WSL `bash tools/ci/linux_release.sh` (an LF copy of the
+checkout, [../testing/unit-tests.md](../testing/unit-tests.md)), on a Mac with Xcode's command line tools, CMake and Ninja
+`bash tools/ci/macos_release.sh` (`OBL_SKIP_TESTS=1` skips the L0 references), and with the Android SDK/NDK and JDK
+`bash tools/ci/android_release.sh`.

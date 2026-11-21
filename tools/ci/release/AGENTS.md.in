@@ -142,6 +142,12 @@ A missing or broken pack stops the start with a message naming the file and "Imp
 [mac]`open -a OpenBeach --args --demo` (copies the L0 pack to `~/Library/Application Support/OpenBeach/l0/` and starts
 [mac]the game there with `OBL_PACK=l0`).
 
+## Exporting converted data for Android (experimental)
+[win]`game\ExportForAndroid.cmd` (`game\scripts\export_android.ps1`) packs `game\userdata\` into an uncompressed `openbeach-data.zip`.
+[linux]`game/export-android.sh` packs `game/userdata/` into an uncompressed `openbeach-data.zip`.
+[mac]`"<app>/Contents/Resources/export-android.sh"` packs `<userdata>` into an uncompressed `~/Desktop/openbeach-data.zip`.
+Copy `openbeach-data.zip` and `openbeach-@VERSION@-android-arm64.apk` to the Android device, install the APK, tap "Import data package (.zip)" and select `openbeach-data.zip`; the `.zip` can be deleted afterwards.
+
 ## Troubleshooting
 - Converter errors are printed with `error:`; an unknown executable or sprite stamp means an unsupported copy.
 [win]- SmartScreen ("Windows protected your PC") blocks unsigned files downloaded from the internet: the user clicks

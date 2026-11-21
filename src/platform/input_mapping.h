@@ -72,9 +72,9 @@ private:
     float m_x = 0, m_y = 0;
 };
 
-// True where SDL relative mode cannot work for a drag started outside the button's event handler (the browser).
+// True where SDL relative mode cannot work for a drag started outside the button's event handler (the browser and Android).
 constexpr bool kAbsoluteDrag =
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
         true;
 #else
         false;

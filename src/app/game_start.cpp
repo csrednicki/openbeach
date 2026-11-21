@@ -161,7 +161,7 @@ int obl::OpenGame(const std::filesystem::path& gameDirectory)
     OBL_LOG("pid %lu, game directory %s, host %s", GetCurrentProcessId(), Utf8(gameDirectory).c_str(), Utf8(ModulePath(nullptr)).c_str());
 #else
     OBL_LOG("pid %d, game directory %s", static_cast<int>(getpid()), Utf8(gameDirectory).c_str());
-#ifdef __linux__
+#if defined(__linux__) && !defined(__ANDROID__)
     // The sound server of a desktop session belongs to the session's user, so a root process falls back to bare ALSA and
     // is usually silent; files it writes to userdata/ also stay root-owned.
     if (geteuid() == 0)

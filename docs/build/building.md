@@ -49,6 +49,15 @@ OBL_SIM_SKIP_CONVERSION=1 bash tools/obl_sim_linux.sh -DOBL_LINUX_WINDOWED=ON -D
 ```
 The release app and disk image come from `bash tools/ci/macos_release.sh` ([releases.md](releases.md#macos)).
 
+## Android
+Experimental, `arm64-v8a` only (Android 8.0 / API 26 or newer), built without Gradle from the Android SDK/NDK and a JDK
+([android.md](android.md)):
+
+```bash
+python tools/obl_android.py
+```
+The release APK comes from `bash tools/ci/android_release.sh` ([releases.md](releases.md#android)).
+
 ## WebAssembly
 `bash tools/wasm_linux.sh` builds the unit tests, the simulation and the importer adapter with Emscripten (`EMSDK` names the SDK).
 

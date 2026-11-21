@@ -322,3 +322,26 @@ OBL_TEST_CASE("touch.a_gesture_keeps_the_aim_it_began_with")
     touch.Cancel();
     OBL_CHECK_EQ(Kinds(touch.Take()), "LU");
 }
+
+OBL_TEST_CASE("touch.display_scale_scales_slop_and_wheel_notches")
+{
+    TouchGestures touch;
+    touch.SetScale(3.0f);
+    // Motion past 1x slop (14 px) but inside 3x slop (42 px) still stays a tap.
+    touch.FingerDown(1, 100, 100, 0);
+    touch.Take();
+    touch.FingerMove(1, 130, 100, 30);
+    OBL_CHECK_EQ(Kinds(touch.Take()), "");
+    touch.FingerUp(1, 130, 100, 60);
+    OBL_CHECK_EQ(Kinds(touch.Take()), "M LD LU");
+    // Two-finger wheel requires 3x pixels per notch.
+    touch.FingerDown(2, 100, 400, 100);
+    touch.FingerDown(3, 200, 400, 110);
+    touch.Take();
+    touch.FingerMove(2, 100, 400 - 3.0f * TouchGestures::kPixelsPerNotch, 150);
+    auto first = touch.Take();
+    touch.FingerMove(3, 200, 400 - 3.0f * TouchGestures::kPixelsPerNotch, 160);
+    auto second = touch.Take();
+    const float total = WheelTotal(first) + WheelTotal(second);
+    OBL_CHECK(total < -0.99f && total > -1.01f);
+}

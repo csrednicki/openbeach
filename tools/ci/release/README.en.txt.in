@@ -88,6 +88,14 @@ NO COPY AT HAND? TRY THE DEMO
 [mac]  Start OpenBeach and click "Play the demo": a small scenario of the project's own that needs no data of the original
 [mac]  game. After an import, start it in Terminal: open -a OpenBeach --args --demo
 
+PLAYING ON ANDROID (experimental)
+[win]  After STEP 2, double-click game/ExportForAndroid.cmd to pack your converted copy into openbeach-data.zip.
+[linux]  After STEP 2, run ./export-android.sh in the "game" folder to pack your converted copy into openbeach-data.zip.
+[mac]  After STEP 2, run /Applications/OpenBeach.app/Contents/Resources/export-android.sh in Terminal to pack your
+[mac]  converted copy into ~/Desktop/openbeach-data.zip.
+  Copy openbeach-data.zip and openbeach-@VERSION@-android-arm64.apk to your Android device (e.g. Downloads), install the
+  .apk, tap "Import data package (.zip)" and select openbeach-data.zip. Afterwards you can delete the .zip file.
+
 WHERE DO I GET AN .ISO FILE?
   If you still have the disc, make an image of it on a computer with a drive: ImgBurn or AnyBurn on Windows, Disk
   Utility on a Mac (a "DVD/CD master" image, renamed from .cdr to .iso) or the dd command on Linux. If the disc is lost

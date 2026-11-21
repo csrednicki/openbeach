@@ -90,6 +90,14 @@ su instalación (un CD no las contiene). Para continuarlas en OpenBeach:
 [mac]  Abre OpenBeach y haz clic en «Play the demo»: un pequeño escenario propio del proyecto, sin datos del juego original.
 [mac]  Tras una importación, ábrelo en Terminal: open -a OpenBeach --args --demo
 
+JUGAR EN ANDROID (experimental)
+[win]  Después del PASO 2, haz doble clic en game/ExportForAndroid.cmd para crear openbeach-data.zip.
+[linux]  Después del PASO 2, ejecuta ./export-android.sh en la carpeta «game» para crear openbeach-data.zip.
+[mac]  Después del PASO 2, ejecuta /Applications/OpenBeach.app/Contents/Resources/export-android.sh en Terminal para crear
+[mac]  ~/Desktop/openbeach-data.zip.
+  Copia openbeach-data.zip y openbeach-@VERSION@-android-arm64.apk a tu dispositivo Android (p. ej. Descargas), instala el
+  .apk, pulsa «Importar paquete de datos (.zip)» y elige openbeach-data.zip. Luego puedes borrar el archivo .zip.
+
 ¿DÓNDE CONSIGO UN ARCHIVO .ISO?
   Si aún tienes el disco, crea una imagen en un ordenador con lector: ImgBurn o AnyBurn en Windows, la Utilidad de Discos
   en Mac (una imagen "maestra de DVD/CD", renombrada de .cdr a .iso) o el comando dd en Linux. Si el disco se perdió o

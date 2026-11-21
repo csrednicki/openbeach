@@ -3,18 +3,22 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.openbeach.game">
     <uses-feature android:glEsVersion="0x00020000" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
-    <!-- Native libraries are extracted on install, so the APK may compress them. -->
+    <!-- Native libraries are extracted on install, so the APK may compress them and still meet 16 KB page alignment. -->
     <application android:label="OpenBeach" android:icon="@mipmap/ic_launcher" android:extractNativeLibs="true"
-        android:appCategory="game" android:isGame="true" android:hardwareAccelerated="true"
-        android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
-        <!-- The configuration changes are SDL's own list: SDL resizes its surface instead of the activity restarting. -->
-        <activity android:name=".OpenBeachActivity" android:exported="true" android:screenOrientation="sensorLandscape"
-            android:launchMode="singleInstance" android:preferMinimalPostProcessing="true"
-            android:configChanges="layoutDirection|locale|grammaticalGender|fontScale|fontWeightAdjustment|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation">
+        android:allowBackup="false" android:appCategory="game" android:isGame="true" android:hardwareAccelerated="true">
+        <activity android:name=".LauncherActivity" android:exported="true"
+            android:theme="@android:style/Theme.Material.NoActionBar"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
         </activity>
+        <!-- The configuration changes are SDL's own list: SDL resizes its surface instead of the activity restarting. -->
+        <activity android:name=".OpenBeachActivity" android:exported="true" android:screenOrientation="sensorLandscape"
+            android:launchMode="singleInstance" android:preferMinimalPostProcessing="true"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:configChanges="layoutDirection|locale|grammaticalGender|fontScale|fontWeightAdjustment|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation" />
     </application>
 </manifest>

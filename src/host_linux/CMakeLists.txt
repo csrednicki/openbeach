@@ -62,20 +62,22 @@ include(${REPO}/cmake/zlib_inflate.cmake)
 # The runtime loads converted GUI tables even in headless scripts that exercise GUI containers.
 # Build the portable converter without the simulation's MSVC ABI compatibility flags.
 file(GLOB_RECURSE CONVERT_SOURCES CONFIGURE_DEPENDS ${REPO}/importer/src/*.cpp)
-include(${REPO}/importer/portable_sources.cmake)
-add_executable(obl-convert ${OBL_IMPORTER_SOURCES} ${REPO}/importer/cli/main.cpp)
-target_include_directories(obl-convert PRIVATE ${REPO}/src ${REPO} ${REPO}/importer/include)
-# The Debug build type is -O0: converting the sprites (584k frames) took 13 min of the 16 min "Build obl-sim" CI step.
-target_compile_options(obl-convert PRIVATE -O2)
-target_link_libraries(obl-convert PRIVATE nlohmann_json::nlohmann_json obl_zlib)
 include(${REPO}/cmake/embedded_schemas.cmake)
-obl_embedded_schemas(obl-convert)
-# Helpers of the old-save tests (tests/tools/test_convert_old_saves.py, test_launcher_startup_old_saves.py): a synthetic
-# old save and the launcher's conversion step on its own.
-add_executable(synthetic_old_save ${REPO}/tests/tools/synthetic_old_save_main.cpp)
-target_include_directories(synthetic_old_save PRIVATE ${REPO} ${REPO}/tests/unit ${REPO}/importer/include)
-add_executable(launcher_old_saves_helper ${REPO}/tests/tools/launcher_old_saves_main.cpp ${REPO}/src/launcher/old_saves.cpp)
-target_include_directories(launcher_old_saves_helper PRIVATE ${REPO}/src/launcher)
+if(NOT ANDROID)
+    include(${REPO}/importer/portable_sources.cmake)
+    add_executable(obl-convert ${OBL_IMPORTER_SOURCES} ${REPO}/importer/cli/main.cpp)
+    target_include_directories(obl-convert PRIVATE ${REPO}/src ${REPO} ${REPO}/importer/include)
+    # The Debug build type is -O0: converting the sprites (584k frames) took 13 min of the 16 min "Build obl-sim" CI step.
+    target_compile_options(obl-convert PRIVATE -O2)
+    target_link_libraries(obl-convert PRIVATE nlohmann_json::nlohmann_json obl_zlib)
+    obl_embedded_schemas(obl-convert)
+    # Helpers of the old-save tests (tests/tools/test_convert_old_saves.py, test_launcher_startup_old_saves.py): a synthetic
+    # old save and the launcher's conversion step on its own.
+    add_executable(synthetic_old_save ${REPO}/tests/tools/synthetic_old_save_main.cpp)
+    target_include_directories(synthetic_old_save PRIVATE ${REPO} ${REPO}/tests/unit ${REPO}/importer/include)
+    add_executable(launcher_old_saves_helper ${REPO}/tests/tools/launcher_old_saves_main.cpp ${REPO}/src/launcher/old_saves.cpp)
+    target_include_directories(launcher_old_saves_helper PRIVATE ${REPO}/src/launcher)
+endif()
 FetchContent_Declare(pl_mpeg
     URL https://raw.githubusercontent.com/phoboslab/pl_mpeg/c871f2be022ece7ef4f64230b4fb8e1fb9eb6023/pl_mpeg.h
     URL_HASH SHA256=3a8cb30c83c2a1147719c30fe0c8b93da2987aa43140077c575b39aaa75fc2c9
@@ -203,13 +205,19 @@ set(INIT_SOURCE ${REPO}/src/app/game_start.cpp)
 list(REMOVE_ITEM HOST_SOURCES ${INIT_SOURCE})
 add_library(obl-game OBJECT ${COMMON_SOURCES} ${HOST_SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/test_tool_stubs.cpp
     ${CONVERT_SOURCES})
-add_executable(obl-sim ${INIT_SOURCE} ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp ${CMAKE_CURRENT_SOURCE_DIR}/headless_input.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/headless_modules.cpp)
-set(GAME_TARGETS obl-game obl-sim)
+set(GAME_TARGETS obl-game)
+if(NOT ANDROID)
+    add_executable(obl-sim ${INIT_SOURCE} ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp ${CMAKE_CURRENT_SOURCE_DIR}/headless_input.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/headless_modules.cpp)
+    list(APPEND GAME_TARGETS obl-sim)
+endif()
 if(OBL_LINUX_WINDOWED)
     if(EMSCRIPTEN)
         # The browser tab is the only process: no host process and no old-save conversion (browser_main.cpp).
         set(LAUNCHER_SOURCES ${REPO}/src/launcher/browser_main.cpp)
+    elseif(ANDROID)
+        # Android runs one process inside SDLActivity: no desktop settings window and no old-save conversion (android_main.cpp).
+        set(LAUNCHER_SOURCES ${REPO}/src/launcher/android_main.cpp)
     else()
         set(LAUNCHER_SOURCES ${REPO}/src/launcher/remaster_main.cpp ${REPO}/src/launcher/standalone_host.cpp
             ${REPO}/src/launcher/old_saves.cpp ${REPO}/src/launcher/settings_window.cpp
@@ -220,6 +228,7 @@ if(OBL_LINUX_WINDOWED)
         # SDL's Java activity loads libmain.so and calls its SDL_main (tools/android/).
         add_library(OpenBeach SHARED ${OPENBEACH_SOURCES})
         set_target_properties(OpenBeach PROPERTIES OUTPUT_NAME main LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+        target_link_libraries(OpenBeach PRIVATE log)
     else()
         add_executable(OpenBeach ${OPENBEACH_SOURCES})
     endif()
@@ -305,12 +314,18 @@ if(OBL_LINUX_WINDOWED)
 endif()
 set_source_files_properties(${REPO}/src/platform/pl_mpeg_impl.c ${REPO}/src/platform/dr_mp3_impl.c PROPERTIES
     COMPILE_OPTIONS "-w")
-obl_gui_content_schemas(obl-convert)
+if(TARGET obl-convert)
+    obl_gui_content_schemas(obl-convert)
+endif()
 
 if(OBL_SIM_FAST_BUILD)
     # Only stable library headers: changing a game layout must not invalidate the PCH.
     # The two targets need separate PCHs because the host has MSVC compatibility flags.
-    foreach(target obl-game obl-convert)
+    set(PCH_TARGETS obl-game)
+    if(TARGET obl-convert)
+        list(APPEND PCH_TARGETS obl-convert)
+    endif()
+    foreach(target ${PCH_TARGETS})
         target_precompile_headers(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:<nlohmann/json.hpp$<ANGLE-R>>")
     endforeach()
 endif()

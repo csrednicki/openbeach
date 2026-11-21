@@ -92,6 +92,14 @@ NIE MASZ KOPII POD RĘKĄ? WYPRÓBUJ DEMO
 [mac]  Uruchom OpenBeach i kliknij „Play the demo”: mały scenariusz samego projektu, bez danych oryginalnej gry. Po
 [mac]  imporcie uruchomisz go w Terminalu: open -a OpenBeach --args --demo
 
+GRANIE NA ANDROIDZIE (eksperymentalne)
+[win]  Po KROKU 2 kliknij dwa razy game/ExportForAndroid.cmd, żeby spakować przekonwertowaną kopię do openbeach-data.zip.
+[linux]  Po KROKU 2 uruchom ./export-android.sh w folderze „game”, żeby spakować przekonwertowaną kopię do openbeach-data.zip.
+[mac]  Po KROKU 2 uruchom /Applications/OpenBeach.app/Contents/Resources/export-android.sh w Terminalu, żeby spakować
+[mac]  przekonwertowaną kopię do ~/Desktop/openbeach-data.zip.
+  Skopiuj openbeach-data.zip i openbeach-@VERSION@-android-arm64.apk na telefon (np. do Pobrane), zainstaluj .apk, kliknij
+  „Importuj paczkę danych (.zip)” i wybierz openbeach-data.zip. Po imporcie plik .zip można usunąć.
+
 SKĄD WZIĄĆ PLIK .ISO?
   Jeśli nadal masz płytę, zrób jej obraz na komputerze z napędem: ImgBurn albo AnyBurn na Windows, Narzędzie dyskowe na
   Macu (obraz „DVD/CD master”, ze zmienioną nazwą z .cdr na .iso) albo polecenie dd na Linuksie. Jeśli płyta zginęła lub

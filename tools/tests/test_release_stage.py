@@ -45,7 +45,8 @@ class MacLayoutTests(unittest.TestCase):
             contents = out / "OpenBeach.app" / "Contents"
             for name in ("OpenBeach", "obl-convert", "openbeach-launcher"):
                 self.assertTrue((contents / "MacOS" / name).is_file(), name)
-            for script in (contents / "MacOS" / "openbeach-launcher", contents / "Resources" / "import.sh"):
+            for script in (contents / "MacOS" / "openbeach-launcher", contents / "Resources" / "import.sh",
+                           contents / "Resources" / "export-android.sh"):
                 self.assertTrue(script.stat().st_mode & 0o111, script.name)
             self.assertTrue((contents / "Resources" / "l0" / "packs" / "l0" / "pack.json").is_file())
             self.assertTrue((contents / "Resources" / "LICENSE").is_file())
