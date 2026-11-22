@@ -99,6 +99,9 @@ option(OBL_LINUX_WINDOWED "Also build the windowed OpenBeach (SDL video, rendere
 # (src/platform/input.cpp). It needs the device's SDL2 and ALSA headers: OBL_SDL2_INCLUDE_DIR and ALSA_INCLUDE_DIR
 # (tools/obl_handheld.py passes them).
 option(OBL_HANDHELD "With OBL_LINUX_WINDOWED: the firmware's SDL2 for the picture and a pad as the mouse, for handhelds" OFF)
+# OBL_ANDROID_PAD (Android only, docs/build/android.md): the test build with the handheld's controls on the touch screen, a virtual
+# D-pad that scrolls the map and a touchpad that moves the cursor (src/platform/touch_pad.h), instead of the browser's gestures.
+option(OBL_ANDROID_PAD "Android: a virtual D-pad and a touchpad instead of the touch gestures" OFF)
 set(SDL_SHARED OFF CACHE BOOL "" FORCE)
 set(SDL_STATIC ON CACHE BOOL "" FORCE)
 set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
@@ -229,6 +232,9 @@ if(OBL_LINUX_WINDOWED)
         add_library(OpenBeach SHARED ${OPENBEACH_SOURCES})
         set_target_properties(OpenBeach PROPERTIES OUTPUT_NAME main LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
         target_link_libraries(OpenBeach PRIVATE log)
+        if(OBL_ANDROID_PAD)
+            target_compile_definitions(OpenBeach PRIVATE OBL_ANDROID_PAD=1)
+        endif()
     else()
         add_executable(OpenBeach ${OPENBEACH_SOURCES})
     endif()

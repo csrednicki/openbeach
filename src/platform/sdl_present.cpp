@@ -20,6 +20,12 @@
 #include "platform/frame_share.h"
 #include "platform/input.h"
 #endif
+#ifdef OBL_ANDROID_PAD
+#include "platform/arrow_cursor.h"
+#include "platform/cursor.h"
+#include "platform/input.h"
+#include "platform/touch_pad.h"
+#endif
 #include "core/log.h"
 #include "core/platform_main.h"
 #include "openbeach_icon.gen.h"
@@ -32,6 +38,7 @@
 #endif
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <vector>
@@ -253,6 +260,132 @@ void Verify(const uint16_t* bits, int pitch, int width, int height, const SDL_FR
             dst.h, pixels, mismatches);
 }
 
+#ifdef OBL_ANDROID_PAD
+constexpr float kPi = 3.14159265f;
+
+// A filled slice of a circle from angle `from` to `to` (radians, clockwise from the right). 128 edges for a whole circle: at the
+// pad's radius of about 200 pixels the polygon stays within a tenth of a pixel of the round edge.
+void FillSlice(float x, float y, float radius, float from, float to, SDL_FColor color)
+{
+    constexpr int kCircleSteps = 128;
+    const int steps = std::clamp(static_cast<int>(std::ceil(kCircleSteps * (to - from) / (2 * kPi))), 1, kCircleSteps);
+    SDL_Vertex vertices[kCircleSteps + 2];
+    int indices[kCircleSteps * 3];
+    vertices[0] = {{x, y}, color, {0, 0}};
+    for (int i = 0; i <= steps; ++i) {
+        const float angle = from + (to - from) * static_cast<float>(i) / static_cast<float>(steps);
+        vertices[i + 1] = {{x + radius * std::cos(angle), y + radius * std::sin(angle)}, color, {0, 0}};
+    }
+    for (int i = 0; i < steps; ++i) {
+        indices[3 * i] = 0;
+        indices[3 * i + 1] = i + 1;
+        indices[3 * i + 2] = i + 2;
+    }
+    SDL_RenderGeometry(g_renderer, nullptr, vertices, steps + 2, indices, steps * 3);
+}
+
+void FillDisc(const DpadCircle& circle, SDL_FColor color)
+{
+    FillSlice(circle.x, circle.y, circle.radius, 0, 2 * kPi, color);
+}
+
+// A convex polygon of up to four corners (an arrow, the magnifier's handle).
+void FillConvex(const SDL_FPoint* points, int count, SDL_FColor color)
+{
+    SDL_Vertex vertices[4];
+    int indices[6];
+    for (int i = 0; i < count; ++i) vertices[i] = {points[i], color, {0, 0}};
+    for (int i = 0; i + 2 < count; ++i) {
+        indices[3 * i] = 0;
+        indices[3 * i + 1] = i + 1;
+        indices[3 * i + 2] = i + 2;
+    }
+    SDL_RenderGeometry(g_renderer, nullptr, vertices, count, indices, 3 * (count - 2));
+}
+
+// A light rim around a dark body, as the D-pad and the magnifier's button share; `lit` turns the body blue.
+void DrawControl(const DpadCircle& circle, bool lit)
+{
+    FillDisc(circle, {0.85f, 0.95f, 1.0f, 0.4f});
+    FillDisc({circle.x, circle.y, circle.radius - std::max(3.0f, 0.07f * circle.radius)},
+            lit ? SDL_FColor{0.1f, 0.4f, 0.7f, 0.8f} : SDL_FColor{0.04f, 0.09f, 0.15f, 0.6f});
+}
+
+// The magnifier's button: a glass with a plus and its handle, the handle pointing to the lower right.
+void DrawMagnifierButton(const DpadCircle& button, bool on)
+{
+    DrawControl(button, on);
+    const SDL_FColor icon = on ? SDL_FColor{1, 1, 1, 0.95f} : SDL_FColor{0.75f, 0.87f, 1.0f, 0.75f};
+    const float r = button.radius;
+    const DpadCircle glass{button.x - 0.12f * r, button.y - 0.12f * r, 0.42f * r};
+    const float d = 0.7071f; // the handle's direction, 45 degrees
+    const float from = 0.9f * glass.radius, to = glass.radius + 0.42f * r, half = 0.09f * r;
+    const SDL_FPoint handle[4] = {{glass.x + d * (from - half), glass.y + d * (from + half)},
+            {glass.x + d * (from + half), glass.y + d * (from - half)}, {glass.x + d * (to + half), glass.y + d * (to - half)},
+            {glass.x + d * (to - half), glass.y + d * (to + half)}};
+    FillConvex(handle, 4, icon);
+    FillDisc(glass, icon);
+    // The glass's inside is opaque, so the ring stays a ring over the translucent body.
+    FillDisc({glass.x, glass.y, 0.76f * glass.radius}, on ? SDL_FColor{0.1f, 0.4f, 0.7f, 1} : SDL_FColor{0.04f, 0.09f, 0.15f, 1});
+    const float arm = 0.48f * glass.radius, thick = 0.07f * r;
+    SDL_SetRenderDrawColorFloat(g_renderer, icon.r, icon.g, icon.b, icon.a);
+    const SDL_FRect plus[2] = {{glass.x - arm, glass.y - thick, 2 * arm, 2 * thick}, {glass.x - thick, glass.y - arm, 2 * thick, 2 * arm}};
+    SDL_RenderFillRects(g_renderer, plus, 2);
+}
+
+// The magnifier's zoom: the quarter of the texture around the zoom's centre, which the picture shows twice the size.
+SDL_FRect ZoomSource(const SDL_FRect& picture, const TouchPadView& view, int width, int height)
+{
+    const float kx = static_cast<float>(width) / picture.w, ky = static_cast<float>(height) / picture.h;
+    return {(view.zoomX - picture.x - picture.w / 4) * kx, (view.zoomY - picture.y - picture.h / 4) * ky, width / 2.0f, height / 2.0f};
+}
+
+// The Android pad build's controls over the frame (touch_pad.h): the arrow cursor at the picture's scale (Android shows no
+// pointer for fingers; zoomed with the picture), a round D-pad whose held arrows and their quarter light up, the magnifier's button.
+void DrawTouchPad(int outW, int outH, const SDL_FRect& picture, int gameWidth, const TouchPadView& view)
+{
+    SDL_SetRenderDrawBlendMode(g_renderer, SDL_BLENDMODE_BLEND);
+    int cursorX = 0, cursorY = 0;
+    if (HandheldCursor(cursorX, cursorY) && LocalCursorVisible() && gameWidth > 0) {
+        float x = static_cast<float>(cursorX), y = static_cast<float>(cursorY), scale = picture.w / static_cast<float>(gameWidth);
+        if (view.zoomed) {
+            x = picture.x + picture.w / 2 + 2 * (x - view.zoomX);
+            y = picture.y + picture.h / 2 + 2 * (y - view.zoomY);
+            scale *= 2;
+        }
+        SDL_FRect outline[17 * 12], fill[17 * 12];
+        int outlines = 0, fills = 0;
+        for (int row = 0; row < 17; ++row)
+            for (int column = 0; column < 12; ++column) {
+                const SDL_FRect pixel{x + column * scale, y + row * scale, scale, scale};
+                if (kArrow[row][column] == 'X') outline[outlines++] = pixel;
+                if (kArrow[row][column] == '.') fill[fills++] = pixel;
+            }
+        SDL_SetRenderDrawColor(g_renderer, 0, 0, 0, 255);
+        SDL_RenderFillRects(g_renderer, outline, outlines);
+        SDL_SetRenderDrawColor(g_renderer, 255, 255, 255, 255);
+        SDL_RenderFillRects(g_renderer, fill, fills);
+    }
+    const DpadCircle pad = DpadPlacement(outW, outH);
+    DrawControl(pad, false);
+    const float inner = 0.93f * pad.radius;
+    constexpr struct {
+        unsigned bit;
+        float angle;
+    } kArrows[] = {{kDpadRight, 0}, {kDpadDown, kPi / 2}, {kDpadLeft, kPi}, {kDpadUp, -kPi / 2}};
+    for (const auto& arrow : kArrows) {
+        const bool on = (view.arrows & arrow.bit) != 0;
+        if (on) FillSlice(pad.x, pad.y, inner, arrow.angle - kPi / 4, arrow.angle + kPi / 4, {0.6f, 0.85f, 1.0f, 0.3f});
+        const float c = std::cos(arrow.angle), s = std::sin(arrow.angle);
+        const float tip = 0.8f * pad.radius, base = 0.48f * pad.radius, half = 0.2f * pad.radius;
+        const SDL_FPoint triangle[3] = {{pad.x + c * tip, pad.y + s * tip}, {pad.x + c * base - s * half, pad.y + s * base + c * half},
+                {pad.x + c * base + s * half, pad.y + s * base - c * half}};
+        FillConvex(triangle, 3, on ? SDL_FColor{1, 1, 1, 0.95f} : SDL_FColor{0.75f, 0.87f, 1.0f, 0.65f});
+    }
+    DrawMagnifierButton(MagnifierButton(pad), view.magnifier);
+}
+#endif
+
 bool Present(const uint16_t* bits, int pitch, int width, int height, SDL_PixelFormat format)
 {
     if (!Attach() || !EnsureTexture(format, width, height)) return false;
@@ -262,7 +395,16 @@ bool Present(const uint16_t* bits, int pitch, int width, int height, SDL_PixelFo
     SDL_FRect dst = LetterboxRect(width, height, std::max(outW, 1), std::max(outH, 1));
     SDL_SetRenderDrawColor(g_renderer, 0, 0, 0, 255);
     SDL_RenderClear(g_renderer);
-    SDL_RenderTexture(g_renderer, g_texture, nullptr, &dst);
+    const SDL_FRect* source = nullptr; // the whole frame
+#ifdef OBL_ANDROID_PAD
+    const TouchPadView view = CurrentTouchPadView();
+    const SDL_FRect zoom = ZoomSource(dst, view, width, height);
+    if (view.zoomed) source = &zoom;
+#endif
+    SDL_RenderTexture(g_renderer, g_texture, source, &dst);
+#ifdef OBL_ANDROID_PAD
+    DrawTouchPad(outW, outH, dst, width, view);
+#endif
     if (g_verifyRequested) {
         g_verifyRequested = false;
         Verify(bits, pitch, width, height, dst);

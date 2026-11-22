@@ -46,4 +46,22 @@ choose **Manage data** to re-import, launch the L0 demo or export `openbeach.log
 | Keys | System back button or gesture maps to `Escape` (`input_mapping.cpp`, `SDL_HINT_ANDROID_TRAP_BACK_BUTTON`). Two-finger drag turns a building being placed. |
 | Instance lock | No-op on Android (`instance_lock.cpp`): Android enforces one app process and `/tmp` is not writable. |
 
+## Test build with the handheld's controls
+`python tools/obl_android.py --pad` (`-DOBL_ANDROID_PAD=ON`) builds `build/android-arm64-pad/OpenBeach-pad.apk`, the same app
+with the controls of the [handheld build](handheld.md) on the touch screen instead of the gestures above (`touch_pad.h`, unit tests
+`touch_pad.*`). It has the same package name and installs over the touch build, keeping the data.
+
+| Finger | Does |
+|---|---|
+| On the D-pad (lower left, in the bar beside a 4:3 picture) | Holds the arrow keys while it stays down: they scroll the map, like the handheld's D-pad. Its direction picks the arrows, two between them; a thumb that slides off keeps its direction. |
+| Anywhere else, moved | A touchpad: the cursor follows the finger's motion (x1.5) and stays where it was left, on the picture. |
+| Tap | Left click where the cursor is. |
+| A second finger | Right click; while a building or scenery is placed, Space instead (turns it, the handheld's X). |
+| On the magnifier button (above the D-pad) | Turns the magnifier on or off (the button turns blue). Turning it on shows the picture twice the size at once, from its centre; a finger then drags the zoomed view (it stays on the picture) and neither clicks nor moves the cursor, while the D-pad keeps scrolling. Turning it off ends the zoom. |
+
+The presenter draws the D-pad and the arrow cursor over the frame (`sdl_present.cpp`), as Android shows no pointer for fingers.
+The Video tab of the in-game options gets the handheld's two sliders (`own_controls::SetPadPointer`): `[Video] CursorSpeed` scales
+the touchpad (the default 30 is x1.5, 10 is x0.5) and `[Video] ScrollSpeed` the map's scrolling by the D-pad and the screen edge.
+Not in this build: holding the left button (painting paths by dragging) and the camera drag with the right one.
+
 Not yet done: on-device `.iso` conversion, Google Play `.aab` packaging, x86-64 and 32-bit ABIs.

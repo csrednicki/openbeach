@@ -19,6 +19,7 @@
 #include "game/game/settings_store.h"
 #include "game/ui/own_controls.h"
 #include "platform/touch_gestures.h"
+#include "platform/touch_pad.h"
 #include "platform/window_placement.h"
 
 #include <windows.h>
@@ -60,6 +61,10 @@ TouchGestures g_touch;
 bool g_touchCursor;
 UnitAccumulator g_touchDragX, g_touchDragY;
 double g_touchPendingX, g_touchPendingY; // finger motion the game's camera drag has not started to take yet (client pixels)
+// The Android pad build (kTouchPad, touch_pad.h) reads the fingers as a D-pad and a touchpad instead of the gestures.
+TouchPad g_touchPad;
+UnitAccumulator g_touchPadX, g_touchPadY;
+unsigned g_touchPadArrows; // held as the arrow keys
 
 // The page locks the pointer for a right drag (web/site.js); SDL then reports motion as deltas.
 bool PagePointerLocked()
@@ -113,6 +118,8 @@ void PushEvent(uint32_t offset, uint32_t data)
 
 void RestoreSdlMousePosition()
 {
+    // The touchpad keeps its own cursor; a phone's mouse state is (0, 0), which put the cursor in the corner, scrolling the map.
+    if (kTouchPad) return;
     // The offscreen driver (hidden mode on SDL hosts) has no pointer: its state is (0, 0), which would scroll the edge.
     const char* driver = SDL_GetCurrentVideoDriver();
     if (driver && std::strcmp(driver, "offscreen") == 0) return;
@@ -517,6 +524,41 @@ void ApplyTouchActions()
     }
 }
 
+// kTouchPad: the cursor stays where the fingers moved it and is drawn by the presenter (sdl_present.cpp), as on the handheld.
+void ApplyTouchPad()
+{
+    const TouchPad::Output out = g_touchPad.Take();
+    const RECT image = ClientImageRect(GameWindow(), GameSize());
+    if (image.right <= image.left || image.bottom <= image.top) return;
+    if (g_sdlMouseClient.x < 0) g_sdlMouseClient = {(image.left + image.right) / 2, (image.top + image.bottom) / 2};
+    // Kept on the picture: the bars beside it are no game position, and its edge scrolls the map like the mouse's.
+    g_sdlMouseClient = {std::clamp<LONG>(g_sdlMouseClient.x + g_touchPadX.Add(out.dx), image.left, image.right - 1),
+            std::clamp<LONG>(g_sdlMouseClient.y + g_touchPadY.Add(out.dy), image.top, image.bottom - 1)};
+    for (int i = 0; i < out.taps; ++i) {
+        PushEvent(input_state::kRecordLeft, 0x80);
+        PushEvent(input_state::kRecordLeft, 0);
+    }
+    // Two fingers are the right button, or Space while a building or scenery is being placed (the handheld's X): it turns it.
+    for (int i = 0; i < out.twoFingerTaps; ++i) {
+        if (CurrentTouchAim() == TouchAim::Confirm) {
+            g_keys.OnKey(SdlScancodeToKeyCode(SDL_SCANCODE_SPACE), true, false);
+            g_keys.OnKey(SdlScancodeToKeyCode(SDL_SCANCODE_SPACE), false, false);
+        } else {
+            PushEvent(input_state::kRecordRight, 0x80);
+            PushEvent(input_state::kRecordRight, 0);
+        }
+    }
+    const unsigned arrows = g_touchPad.Arrows();
+    constexpr struct {
+        unsigned bit;
+        int scancode;
+    } kArrows[] = {
+            {kDpadLeft, SDL_SCANCODE_LEFT}, {kDpadRight, SDL_SCANCODE_RIGHT}, {kDpadUp, SDL_SCANCODE_UP}, {kDpadDown, SDL_SCANCODE_DOWN}};
+    for (const auto& arrow : kArrows)
+        if ((arrows ^ g_touchPadArrows) & arrow.bit) g_keys.OnKey(SdlScancodeToKeyCode(arrow.scancode), (arrows & arrow.bit) != 0, false);
+    g_touchPadArrows = arrows;
+}
+
 // SDL queues finger events with positions normalized to the window; the gestures work in client pixels, like the mouse.
 void ReadSdlTouchEvents()
 {
@@ -528,17 +570,37 @@ void ReadSdlTouchEvents()
     if (window) g_touch.SetScale(SDL_GetWindowDisplayScale(window));
 #endif
     g_touch.SetAim(CurrentTouchAim());
+    if (kTouchPad && window) {
+        g_touchPad.SetPad(DpadPlacement(width, height));
+        g_touchPad.SetScale(SDL_GetWindowDisplayScale(window));
+        // The Video options' cursor speed, as for the handheld's stick: its default keeps kGain.
+        const double speed = std::max<double>(game::settings_store::Current().m_cursorSpeed, kPadMinPercent);
+        g_touchPad.SetGain(TouchPad::kGain * speed / obl::settings::kDefaultCursorSpeed);
+        const RECT image = ClientImageRect(GameWindow(), GameSize());
+        g_touchPad.SetPicture(static_cast<float>(image.left), static_cast<float>(image.top), static_cast<float>(image.right - image.left),
+                static_cast<float>(image.bottom - image.top));
+    }
     // Drained even when unused (native hosts), so that the queue does not fill up.
     while (SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_EVENT_FINGER_DOWN, SDL_EVENT_FINGER_CANCELED) > 0) {
         if (!kTouchGestures || !g_queueFocused || width <= 0 || height <= 0) continue;
         if (event.type == SDL_EVENT_FINGER_CANCELED) {
             g_touch.Cancel();
+            g_touchPad.Cancel();
             continue;
         }
         if (event.tfinger.windowID != SdlGameWindowId()) continue;
         const auto id = static_cast<int64_t>(event.tfinger.fingerID);
         const float x = event.tfinger.x * static_cast<float>(width), y = event.tfinger.y * static_cast<float>(height);
         const auto ms = static_cast<uint32_t>(event.common.timestamp / 1000000);
+        if (kTouchPad) {
+            if (event.type == SDL_EVENT_FINGER_DOWN)
+                g_touchPad.FingerDown(id, x, y, ms);
+            else if (event.type == SDL_EVENT_FINGER_MOTION)
+                g_touchPad.FingerMove(id, x, y);
+            else if (event.type == SDL_EVENT_FINGER_UP)
+                g_touchPad.FingerUp(id, x, y, ms);
+            continue;
+        }
         if (event.type == SDL_EVENT_FINGER_DOWN)
             g_touch.FingerDown(id, x, y, ms);
         else if (event.type == SDL_EVENT_FINGER_MOTION)
@@ -547,6 +609,10 @@ void ReadSdlTouchEvents()
             g_touch.FingerUp(id, x, y, ms);
     }
     if (!kTouchGestures) return;
+    if (kTouchPad) {
+        ApplyTouchPad();
+        return;
+    }
     g_touch.Tick(static_cast<uint32_t>(SDL_GetTicks()));
     ApplyTouchActions();
 }
@@ -633,6 +699,8 @@ public:
         // Back reaches the game as Esc (input_mapping.cpp) instead of closing the activity.
         SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
 #endif
+        // The handheld's Video options (cursor and scroll speed sliders) also serve the touchpad and the D-pad.
+        if (kTouchPad) own_controls::SetPadPointer(true);
 #ifdef OBL_HANDHELD
         g_padL1 = PadSetting("OBL_PAD_L1", g_padL1, g_padButtons.size());
         g_padR1 = PadSetting("OBL_PAD_R1", g_padR1, g_padButtons.size());
@@ -713,6 +781,8 @@ public:
         g_touch.Take();
         g_touchCursor = false;
         g_touchPendingX = g_touchPendingY = 0;
+        g_touchPad.Cancel();
+        g_touchPadArrows = 0; // the keys above are released too
     }
 
     bool Focused() override { return g_inputFocused; }
@@ -746,10 +816,19 @@ SdlInputBackend g_sdlBackend;
 
 bool HandheldCursor(int& x, int& y)
 {
-    if (!kHandheld || g_sdlMouseClient.x < 0) return false;
+    if ((!kHandheld && !kTouchPad) || g_sdlMouseClient.x < 0) return false;
     x = g_sdlMouseClient.x;
     y = g_sdlMouseClient.y;
     return true;
+}
+
+TouchPadView CurrentTouchPadView()
+{
+    TouchPadView view;
+    view.arrows = g_touchPadArrows;
+    view.magnifier = g_touchPad.Magnifier();
+    view.zoomed = g_touchPad.Zoom(view.zoomX, view.zoomY);
+    return view;
 }
 
 ui::SdlRelativeDragState GetSdlRelativeDragState()
