@@ -148,8 +148,12 @@ void PushEvent(uint32_t offset, uint32_t data)
 
 void RestoreSdlMousePosition()
 {
-    // The touchpad keeps its own cursor; a phone's mouse state is (0, 0), which put the cursor in the corner, scrolling the map.
-    if (PadMode()) return;
+#ifdef __ANDROID__
+    // A phone's mouse state is (0, 0): SDL makes no mouse of the fingers (SDL_HINT_TOUCH_MOUSE_EVENTS), and the touchpad keeps its
+    // own cursor, so coming back to the app put the cursor in the corner and scrolled the map to its top left. A real mouse's next
+    // motion places the cursor anyway.
+    return;
+#endif
     // The offscreen driver (hidden mode on SDL hosts) has no pointer: its state is (0, 0), which would scroll the edge.
     const char* driver = SDL_GetCurrentVideoDriver();
     if (driver && std::strcmp(driver, "offscreen") == 0) return;
@@ -547,6 +551,9 @@ void ApplyTouchActions()
         case Kind::Speed:
             if (!g_touchPad.Magnifier()) StepGameSpeed(action.y > 0 ? 1 : -1); // two fingers drag the magnifier's view instead
             break;
+        case Kind::Turn: // Space turns the building or scenery being placed, as the touchpad's held finger does (ApplyTouchPad)
+            TapKey(SDL_SCANCODE_SPACE);
+            break;
         case Kind::Wheel: {
             if (g_touchPad.Magnifier()) break; // two fingers drag the magnifier's view instead
             int whole = g_sdlWheel.Add(SdlWheelUnits(action.y, false));
@@ -564,7 +571,18 @@ void ApplyTouchActions()
     }
 }
 
-void HoldArrows(unsigned arrows);
+// The D-pad's arrows as the arrow keys: presses and releases for the ones that changed.
+void HoldArrows(unsigned arrows)
+{
+    constexpr struct {
+        unsigned bit;
+        int scancode;
+    } kArrows[] = {
+            {kDpadLeft, SDL_SCANCODE_LEFT}, {kDpadRight, SDL_SCANCODE_RIGHT}, {kDpadUp, SDL_SCANCODE_UP}, {kDpadDown, SDL_SCANCODE_DOWN}};
+    for (const auto& arrow : kArrows)
+        if ((arrows ^ g_touchPadArrows) & arrow.bit) g_keys.OnKey(SdlScancodeToKeyCode(arrow.scancode), (arrows & arrow.bit) != 0, false);
+    g_touchPadArrows = arrows;
+}
 
 // PadMode: the cursor stays where the fingers moved it and is drawn by the presenter (sdl_present.cpp), as on the handheld.
 void ApplyTouchPad()
@@ -584,27 +602,13 @@ void ApplyTouchPad()
     if (out.speedSteps) StepGameSpeed(out.speedSteps);
     for (int i = 0; i < out.twoFingerTaps; ++i) {
         if (CurrentTouchAim() == TouchAim::Confirm) {
-            g_keys.OnKey(SdlScancodeToKeyCode(SDL_SCANCODE_SPACE), true, false);
-            g_keys.OnKey(SdlScancodeToKeyCode(SDL_SCANCODE_SPACE), false, false);
+            TapKey(SDL_SCANCODE_SPACE);
         } else {
             PushEvent(input_state::kRecordRight, 0x80);
             PushEvent(input_state::kRecordRight, 0);
         }
     }
     HoldArrows(g_touchPad.Arrows());
-}
-
-// The D-pad's arrows as the arrow keys: presses and releases for the ones that changed.
-void HoldArrows(unsigned arrows)
-{
-    constexpr struct {
-        unsigned bit;
-        int scancode;
-    } kArrows[] = {
-            {kDpadLeft, SDL_SCANCODE_LEFT}, {kDpadRight, SDL_SCANCODE_RIGHT}, {kDpadUp, SDL_SCANCODE_UP}, {kDpadDown, SDL_SCANCODE_DOWN}};
-    for (const auto& arrow : kArrows)
-        if ((arrows ^ g_touchPadArrows) & arrow.bit) g_keys.OnKey(SdlScancodeToKeyCode(arrow.scancode), (arrows & arrow.bit) != 0, false);
-    g_touchPadArrows = arrows;
 }
 
 // SDL queues finger events with positions normalized to the window; the gestures work in client pixels, like the mouse.

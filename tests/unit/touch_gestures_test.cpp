@@ -28,6 +28,7 @@ std::string Kinds(const std::vector<TouchAction>& actions)
         case Kind::Wheel: line += "W"; break;
         case Kind::Zoom: line += action.y > 0 ? "Z+" : "Z-"; break;
         case Kind::Speed: line += action.y > 0 ? "S+" : "S-"; break;
+        case Kind::Turn: line += "T"; break;
         }
     }
     return line;
@@ -340,12 +341,33 @@ OBL_TEST_CASE("touch.placing_a_second_finger_turns_instead_of_pressing")
     touch.FingerUp(2, 180, 200, 100);
     touch.FingerUp(1, 100, 200, 110);
     OBL_CHECK_EQ(Kinds(touch.Take()), "");
-    // A two-finger tap is the right click as usual (the placing modes do not read it); nothing is pressed on the left.
+    // The first finger lifting first is the right click as usual (the placing modes do not read it); nothing is pressed on the left.
     touch.FingerDown(3, 10, 10, 1000);
     touch.FingerDown(4, 60, 10, 1020);
-    touch.FingerUp(4, 60, 10, 1060);
-    touch.FingerUp(3, 10, 10, 1080);
+    touch.FingerUp(3, 10, 10, 1060);
+    touch.FingerUp(4, 60, 10, 1080);
     OBL_CHECK_EQ(Kinds(touch.Take()), "M M RD RU");
+}
+
+OBL_TEST_CASE("touch.placing_a_second_finger_tap_turns_and_the_first_finger_places")
+{
+    TouchGestures touch;
+    touch.SetAim(TouchAim::Confirm);
+    touch.FingerDown(1, 100, 300, 0);
+    touch.FingerMove(1, 120, 310, 100);
+    touch.Take();
+    // Each quick tap of a second finger turns the preview once; the first finger still aims.
+    for (uint32_t ms : {500u, 900u}) {
+        touch.FingerDown(2, 300, 300, ms);
+        touch.FingerUp(2, 300, 300, ms + 80);
+        OBL_CHECK_EQ(Kinds(touch.Take()), "T");
+    }
+    touch.FingerMove(1, 140, 320, 1100);
+    OBL_CHECK_EQ(Kinds(touch.Take()), "M");
+    touch.FingerUp(1, 150, 330, 1200);
+    const auto actions = touch.Take();
+    OBL_CHECK_EQ(Kinds(actions), "M LD LU");
+    OBL_CHECK_EQ(actions[1].x, 150.0f);
 }
 
 OBL_TEST_CASE("touch.painting_holds_the_left_button_while_the_finger_drags")

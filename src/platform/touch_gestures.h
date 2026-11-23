@@ -5,7 +5,7 @@
 //   tap                    left click
 //   drag with one finger   camera drag (the right button held, the motion as deltas)
 //   press and hold         left button held until the finger lifts (a slider, a drag in the interface)
-//   tap with two fingers   right click
+//   tap with two fingers   right click; while placing, a tap of a second finger turns the preview the first one holds
 //   drag with two fingers  the wheel (up and down)
 //   swipe with two fingers one game speed step: to the right faster, to the left slower
 //   pinch with two fingers one step of the game's zoom (the fingers a quarter wider or narrower)
@@ -45,6 +45,7 @@ struct TouchAction {
         Wheel, // x = 0, y = notches (a finger moving up scrolls down, like a touch list)
         Zoom, // a pinch step: y = 1 closer (fingers apart), -1 farther
         Speed, // a two-finger swipe: y = 1 faster (to the right), -1 slower
+        Turn, // placing: a second finger tapped while the first holds the preview
     };
     Kind kind;
     float x, y;
@@ -300,6 +301,12 @@ inline void TouchGestures::FingerUp(int64_t id, float x, float y, uint32_t ms)
         m_mode = Mode::Done;
         break;
     case Mode::Two:
+        // Placing: a quick tap of the second finger turns the preview, and the first finger goes on aiming; its lift places.
+        if (m_aim == TouchAim::Confirm && id != m_primary && ms - m_startMs <= kTapMs) {
+            Emit(TouchAction::Kind::Turn, x, y);
+            m_mode = Mode::One;
+            break;
+        }
         // Two fingers that touched and left quickly without moving: the right click, where the first one went down.
         if (ms - m_startMs <= kTapMs) {
             Emit(TouchAction::Kind::Move, m_fingers.front().x, m_fingers.front().y);

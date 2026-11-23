@@ -184,8 +184,8 @@ and keeps the log in OPFS for a bug report: [browser-failures.md](browser-failur
   edge does not scroll the map. The canvas has `touch-action: none`.
   While the GUI places things (`GuiManager::m_mode` 1 and 5, building and scenery; `CurrentTouchAim`) one finger is the
   cursor instead, because the game places on the press and a tap would place blindly: the finger moves the preview and
-  lifting it is the press (`TouchAim::Confirm`); a second finger then turns the preview with the wheel and lifts without
-  placing. Painting grass and paving (modes 8 and 7) holds the left button while the finger drags (`TouchAim::Paint`). The
+  lifting it is the press (`TouchAim::Confirm`); a second finger dragged turns the preview with the wheel, a quick tap of
+  it turns it once (Space, `TouchAction::Kind::Turn`) while the first finger goes on aiming and places on its lift. Painting grass and paving (modes 8 and 7) holds the left button while the finger drags (`TouchAim::Paint`). The
   map moves with the edge scroll there. The keys the game reads cannot be typed, so the page has two buttons below the game
   on touch screens (`pointer: coarse`, `wireTouchKeys` in `site.js`): Space (turns the preview) and Esc (leaves a mode,
   opens the menu), sent to the canvas as keyboard events. Rough by design: the thresholds (`kSlop`, `kTapMs`, `kHoldMs`,

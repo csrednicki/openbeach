@@ -85,6 +85,9 @@ The scenario's goals (`GuiManager::CreateProgressBar`) stand beside the centred 
 at the panel's (on the screen's bottom edge where the 640 panel is lower than they are); the two are centred together (`ui::SetBarSide`, `CentredBarX`, unit test `bar_slide.goals_and_panel_centred_together`)
 and slide out of sight together (`game.cpp`).
 
+Coming back to the app keeps the cursor off the screen: SDL's mouse state is (0, 0) without a mouse, and it would scroll the map
+to its top left (`RestoreSdlMousePosition`).
+
 ## The handheld's controls
 With Touch controls off, the controls of the [handheld build](handheld.md) work the touch screen instead of the gestures
 (`touch_pad.h`, unit tests `touch_pad.*`).
