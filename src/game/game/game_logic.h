@@ -84,6 +84,10 @@ template<class Env> std::optional<int> GetVariable(const game::Game& game, const
     if (!std::strcmp(name, "GAME_SEA")) return settings.m_seaEffects;
     if (!std::strcmp(name, "GAME_LIGHTS")) return settings.m_lightEffects;
     if (!std::strcmp(name, "GAME_KEYLINES")) return settings.m_keyline;
+    // The Controls tab of touch screens (OpenBeach's own, own_controls.h).
+    if (!std::strcmp(name, "TOUCH_CONTROLS")) return settings.m_touchControls;
+    if (!std::strcmp(name, "MAGNIFIER")) return settings.m_magnifier;
+    if (!std::strcmp(name, "BAR_AUTOHIDE")) return settings.m_barAutoHide;
     if (!std::strcmp(name, "STAFF_MAKEALL_STATE") || !std::strcmp(name, "STAFF_DISMISS_STATE")) return env.StaffSelected() ? 1 : 0;
     if (!std::strcmp(name, "LOADSAVE_LOAD_STATE") || !std::strcmp(name, "LOADSAVE_LOADDELETE_STATE"))
         return env.Selected("LoadListBox") == 1 && !game.m_saveSlots.empty();
@@ -132,7 +136,13 @@ template<class Env> void SetVariable(game::Game& game, const char* name, int inp
     else if (!std::strcmp(name, "GAME_KEYLINES")) {
         settings.m_keyline = input != 0;
         env.SetKeyline(static_cast<uint8_t>(input != 0));
-    } else if (!std::strcmp(name, "GAME_SCENARIO_SELECT"))
+    } else if (!std::strcmp(name, "TOUCH_CONTROLS"))
+        settings.m_touchControls = input != 0;
+    else if (!std::strcmp(name, "MAGNIFIER"))
+        settings.m_magnifier = input != 0;
+    else if (!std::strcmp(name, "BAR_AUTOHIDE"))
+        settings.m_barAutoHide = input != 0;
+    else if (!std::strcmp(name, "GAME_SCENARIO_SELECT"))
         game::SelectMenuSlot(game, input);
     else if (!std::strcmp(name, "GAME_GAME_SPEED"))
         env.SetGameSpeed(input);

@@ -6,6 +6,7 @@
 
 #include "game/game/game_accessors.h"
 #include "game/ui/image.h"
+#include "game/ui/screen_backdrop.h"
 #include "gui_canvas_live.h"
 #include "game/ui/gui_widgets_leaves.h"
 #include "core/call_counter.h"
@@ -54,6 +55,7 @@ void TgaDraw(Tga* w)
 {
     TgaEnv env;
     gui_widgets::DrawTga(*w, env);
+    ui::screen_backdrop::Shown(w->m_name);
 }
 } // namespace
 

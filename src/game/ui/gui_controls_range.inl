@@ -233,7 +233,7 @@ void ScrollOverlay(Scroll* w)
 }
 
 // ---- GuiSlider ----------------------------------------------------------------------------------------------------------------------
-enum class SliderKey { Red, Green, Blue, Music, Effects, CursorSpeed, ScrollSpeed, Other };
+enum class SliderKey { Red, Green, Blue, Music, Effects, CursorSpeed, ScrollSpeed, BarHideDelay, Other };
 SliderKey KeyOf(const char* name)
 {
     if (std::strcmp(name, "WEATHER_RED") == 0) return SliderKey::Red;
@@ -243,6 +243,7 @@ SliderKey KeyOf(const char* name)
     if (std::strcmp(name, "EFFECTS_VOLUME") == 0) return SliderKey::Effects;
     if (std::strcmp(name, "SCROLL_SPEED") == 0) return SliderKey::ScrollSpeed;
     if (std::strcmp(name, "CURSOR_SPEED") == 0) return SliderKey::CursorSpeed; // OpenBeach's own, see own_controls.h
+    if (std::strcmp(name, "BAR_HIDE_DELAY") == 0) return SliderKey::BarHideDelay; // the Controls tab's, own_controls.h
     return SliderKey::Other;
 }
 void* WeatherObject()
@@ -277,6 +278,7 @@ void SliderSet(ui::GuiSliderData* w, float value)
         return;
     case SliderKey::CursorSpeed: game::settings_store::Current().m_cursorSpeed = static_cast<int>(std::lround(quantized * 100.0f)); return;
     case SliderKey::ScrollSpeed: game::settings_store::Current().m_scrollSpeed = static_cast<int>(std::lround(quantized * 100.0f)); return;
+    case SliderKey::BarHideDelay: game::settings_store::Current().m_barHideSeconds = obl::settings::BarHideSeconds(quantized); return;
     case SliderKey::Other: ProviderStore(Provider(), w->m_variable, quantized); return;
     }
 }
@@ -285,9 +287,9 @@ bool SliderMouse(SliderW* w, int x, int y, int state)
     w->m_hovered = w->HitTest(x, y);
     Track(w, nullptr, x, y, state);
     w->m_knob->MouseLeft(x, y, state);
-    if (w->IsHovered() && state == 1)
-        w->m_dragging = static_cast<uint8_t>(state);
-    else if (!w->IsHovered() || state == 0)
+    if (w->IsHovered() && state == 1) w->m_dragging = static_cast<uint8_t>(state);
+    // A finger drifts off the thin track while it drags (touch screens, gui_touch_snap.h): the drag holds until it lets go.
+    else if (state == 0 || (!w->IsHovered() && !(own_controls::TouchScreen() && state == 2)))
         w->m_dragging = 0;
     if (!w->m_dragging || state == 3) return false;
     x = gui_controls::SliderClampX(x, w->m_x0, w->m_x1);
@@ -326,6 +328,7 @@ void SliderUpdate(SliderW* w, float dt)
     case SliderKey::Effects: value = SoundGetEffects(SoundObject(), nullptr); break;
     case SliderKey::CursorSpeed: value = static_cast<float>(game::settings_store::Current().m_cursorSpeed) / 100.0f; break;
     case SliderKey::ScrollSpeed: value = static_cast<float>(game::settings_store::Current().m_scrollSpeed) / 100.0f; break;
+    case SliderKey::BarHideDelay: value = obl::settings::BarHideShare(game::settings_store::Current().m_barHideSeconds); break;
     default: {
         obl::Char16 text[512];
         obl::Char16* end;

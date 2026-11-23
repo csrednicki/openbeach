@@ -5,6 +5,7 @@
 #include <cstring>
 #include "core/char16.h"
 #include <cstdint>
+#include "game/ui/resolutions.h"
 
 namespace obl::gui_manager_dialogs {
 using Manager = ui::GuiManager;
@@ -260,7 +261,10 @@ template<class Env> bool ShowDialog(Env& env, Manager* manager, const char* name
     entry->m_state = 0;
     int width = dialog->m_x1 - dialog->m_x0, height = dialog->m_y1 - dialog->m_y0;
     int x, y;
-    if (!modal && dialog->m_movable && PositionsRemembered(manager) && env.FindPosition(dialog->m_positionKey, &x, &y)) {
+    // With a centred panel (ui::SetCenteredBar) a window always opens where the script puts it, in the middle: a remembered position
+    // would bring back one from another resolution or layout ([Dialog] in BeachLife.ini).
+    if (!modal && dialog->m_movable && !ui::CenteredBar() && PositionsRemembered(manager) &&
+            env.FindPosition(dialog->m_positionKey, &x, &y)) {
         uint32_t screenWidth, screenHeight;
         env.ScreenSize(screenWidth, screenHeight);
 

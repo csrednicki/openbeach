@@ -628,6 +628,12 @@ void BrowserBuildingCount(const Env& env, Output& out)
     env.Format()(out.text, env.Text("OB_NUM_BUILDINGS"), env.BrowserCount());
 }
 
+// The Controls tab's delay beside its slider: "17 s".
+void BarHideSeconds(const Env& env, Output& out)
+{
+    env.Format()(out.text, u"%d s", env.BarHideSeconds());
+}
+
 struct Entry {
     const char* key;
     Handler handler;
@@ -726,6 +732,7 @@ constexpr Entry kEntries[] = {
         {"BAR_COUNT", &CounterText<WorldCounter::BarsConstructed>},
         {"STAFF_AMOUNTS", &StaffAmounts},
         {"NUM_APARTMENTS", &NumApartments},
+        {"BAR_HIDE_SECONDS", &BarHideSeconds},
 };
 constexpr int kExactCount = static_cast<int>(sizeof(kEntries) / sizeof(kEntries[0]));
 

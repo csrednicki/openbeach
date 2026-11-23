@@ -12,6 +12,7 @@
 #include "game/ui/gui_types.h"
 #include "game/ui/sprite.h"
 #include "game/ui/gui_script_types.h"
+#include "game/ui/own_controls.h"
 #include "core/call_counter.h"
 
 #include <algorithm>
@@ -125,7 +126,10 @@ bool ParseWord(GuiScript& s)
     for (const GuiScriptNode* node = s.m_defines; node; node = node->m_next) {
         const auto* define = static_cast<const ui::GuiDefine*>(node->m_widget);
         if (std::strcmp(define->m_name, name) == 0) {
-            s.m_parent->AddChild(node->m_widget);
+            // OpenBeach's conditional Define (own_controls.h) is named inside a tab's page and belongs to it; the original
+            // scripts name theirs (whole tabs) where the tab window is the parent.
+            GuiWidget* parent = own_controls::ConditionalDefine(name) && s.m_tab ? s.m_tab : s.m_parent;
+            parent->AddChild(node->m_widget);
             return false;
         }
     }

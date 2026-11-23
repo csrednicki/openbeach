@@ -176,6 +176,45 @@ OBL_TEST_CASE("settings_ini.save_order_and_formats")
     OBL_CHECK(handheld.writes == expectedHandheld);
 }
 
+OBL_TEST_CASE("settings_ini.controls_saved_only_with_their_tab")
+{
+    FakeIni missing;
+    VideoValues video;
+    LoadVideo(missing, video);
+    OBL_CHECK(video.touchControls && video.magnifier && video.barAutoHide); // an INI from before the tab: touch, magnifier, auto-hide
+    OBL_CHECK_EQ(video.barHideSeconds, kDefaultBarHideSeconds);
+
+    FakeIni plain;
+    SaveVideo(plain, video);
+    for (const auto& write : plain.writes) OBL_CHECK(write.first.rfind("Controls/", 0) != 0); // no tab, no section
+
+    FakeIni phone;
+    VideoValues pad;
+    pad.touchControls = 0;
+    pad.magnifier = 0;
+    pad.barHideSeconds = 17;
+    pad.controls = true;
+    SaveVideo(phone, pad);
+    VideoValues loaded;
+    LoadVideo(phone, loaded);
+    OBL_CHECK(!loaded.touchControls && !loaded.magnifier && loaded.barAutoHide);
+    OBL_CHECK_EQ(loaded.barHideSeconds, 17);
+
+    FakeIni outOfRange;
+    outOfRange.values["Controls/BarHideSeconds"] = "0";
+    LoadVideo(outOfRange, loaded);
+    OBL_CHECK_EQ(loaded.barHideSeconds, kMinBarHideSeconds);
+    outOfRange.values["Controls/BarHideSeconds"] = "600";
+    LoadVideo(outOfRange, loaded);
+    OBL_CHECK_EQ(loaded.barHideSeconds, kMaxBarHideSeconds);
+
+    // The slider: its ends are 1 and 60 seconds, and every whole second survives the round trip through its share.
+    OBL_CHECK_EQ(BarHideSeconds(0.0f), 1);
+    OBL_CHECK_EQ(BarHideSeconds(1.0f), 60);
+    for (int seconds = kMinBarHideSeconds; seconds <= kMaxBarHideSeconds; ++seconds)
+        OBL_CHECK_EQ(BarHideSeconds(BarHideShare(seconds)), seconds);
+}
+
 OBL_TEST_CASE("settings_ini.save_then_load_round_trip")
 {
     FakeIni ini;

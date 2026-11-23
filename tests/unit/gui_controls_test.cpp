@@ -216,6 +216,18 @@ OBL_TEST_CASE("gui_controls.button_mouse_hover_press_and_leave")
     gui_controls::ButtonMouse(w, 0, host);
     OBL_CHECK(host.calls.empty()); // disabled: hover is not even asked
 }
+OBL_TEST_CASE("gui_controls.button_press_needs_a_hover_first")
+{
+    // The scenery panel's bulldozer on a phone: a press where the cursor did not hover first is dropped (the button lights up and
+    // nothing happens). GuiManager::UpdateMouse gives a landing finger that hover pass.
+    ui::GuiButtonData w{};
+    ButtonHost host;
+    OBL_CHECK(!gui_controls::ButtonMouse(w, 1, host));
+    OBL_CHECK_EQ(w.m_state, 0);
+    gui_controls::ButtonMouse(w, 0, host); // the hover pass
+    OBL_CHECK(gui_controls::ButtonMouse(w, 1, host));
+    OBL_CHECK_EQ(w.m_state, 4);
+}
 OBL_TEST_CASE("gui_controls.button_held_repeat_fires_after_delay")
 {
     ui::GuiButtonData w{};

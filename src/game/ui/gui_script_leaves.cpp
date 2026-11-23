@@ -23,6 +23,7 @@
 #include "game/ui/gui_containers_types.h"
 #include "game/ui/font.h"
 #include "game/ui/gui_manager_types.h"
+#include "game/ui/resolutions.h"
 #include "game/ui/gui_types.h"
 #include "game/ui/sprite.h"
 #include "game/ui/gui_controls_types.h"
@@ -567,13 +568,15 @@ bool ParseMainItemIf(GuiScript& s, bool build)
     ++s.m_cursor;
     return true;
 }
+// The panel for 800 pixels and wider, or the one for 640; a centred panel picks by its own width (ui::BarLayoutWidth), so that a
+// screen between the two (782x360) gets the 640 one rather than none.
 bool ParseMainItem(GuiScript& s)
 {
-    return ParseMainItemIf(s, static_cast<uint32_t>(game::GetRenderer()->m_width) >= 800);
+    return ParseMainItemIf(s, static_cast<uint32_t>(ui::BarLayoutWidth(game::GetRenderer()->m_width)) >= 800);
 }
 bool ParseMainItem640(GuiScript& s)
 {
-    return ParseMainItemIf(s, game::GetRenderer()->m_width == 640);
+    return ParseMainItemIf(s, ui::BarLayoutWidth(game::GetRenderer()->m_width) == 640);
 }
 
 // `DialogItem NAME(rect, background, type, draggable) {`: the ID counter moves before AddWidget, which also lists the dialog.
@@ -591,7 +594,27 @@ bool ParseDialogItem(GuiScript& s)
     ++s.m_cursor;
     Bounds b{};
     int32_t type = 0, draggable = 0;
+    // With a centred panel (ui::SetCenteredBar) a window opens in the middle of the map, whatever the script anchors it to (a
+    // building's top-left corner of an 800x600 screen, the build panel's bottom edge, the full screen's centre). One anchored to the
+    // right (R: the small cancel panel of the build mode) keeps its corner, so it does not cover where a building goes.
+    uint32_t anchors = s.m_cursor;
+    while (s.m_text[anchors] == ' ' || s.m_text[anchors] == '\t') ++anchors;
+    bool right = false;
+    for (; s.m_text[anchors] && std::strchr("TBLRSCY", s.m_text[anchors]); ++anchors) right |= s.m_text[anchors] == 'R';
+    const bool centre = ui::CenteredBar() && !right;
     ReadRootBounds(s, b);
+    if (centre) {
+        // In the middle of the map above the panel, as if the panel (which slides away while idle) were always shown.
+        const auto* renderer = game::GetRenderer();
+        // The panel's height by its width, as SizeBar sets it (gui_manager_frame.h): the script loads in the menus, where the
+        // manager has not sized the panel yet.
+        const int32_t bar = ui::BarLayoutWidth(renderer->m_width) >= 800 ? 0x5e : 0x4b;
+        const int32_t w = b.x1 - b.x0, h = b.y1 - b.y0;
+        b.x0 = (renderer->m_width - w) / 2;
+        b.y0 = std::max(0, (renderer->m_height - bar - h) / 2);
+        b.x1 = b.x0 + w;
+        b.y1 = b.y0 + h;
+    }
     ReadToken(s, background);
     ReadInt(s, type, true);
     ReadInt(s, draggable, true);

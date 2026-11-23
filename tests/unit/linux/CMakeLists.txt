@@ -290,6 +290,8 @@ target_include_directories(obl_unit_tests PRIVATE ${REPO}/tests/unit ${REPO}/src
 target_link_libraries(obl_unit_tests PRIVATE nlohmann_json::nlohmann_json obl_zlib)
 include(${REPO}/cmake/embedded_schemas.cmake)
 obl_embedded_schemas(obl_unit_tests)
+include(${REPO}/cmake/embedded_icon.cmake)
+obl_embedded_bytes(obl_unit_tests assets/ui/controls_tab_hand.png kControlsTabHand controls_tab_hand.gen.h) # game/ui/own_sprites.cpp
 if(OBL_UNIT_SDL)
     target_link_libraries(obl_unit_tests PRIVATE SDL3::SDL3-static)
 endif()

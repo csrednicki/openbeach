@@ -16,6 +16,16 @@ OBL_TEST_CASE("geometry.image_rect_exact_scale")
     OBL_CHECK_EQ(r.bottom, 900);
 }
 
+OBL_TEST_CASE("geometry.aspect_width_follows_screen")
+{
+    // A 2608x1200 phone (about 19.5:9): the Android list's heights at its aspect, each width even.
+    OBL_CHECK_EQ(AspectWidth(360, 2608, 1200), 782);
+    OBL_CHECK_EQ(AspectWidth(480, 2608, 1200), 1044);
+    OBL_CHECK_EQ(AspectWidth(600, 2608, 1200), 1304);
+    OBL_CHECK_EQ(AspectWidth(768, 2608, 1200), 1670);
+    OBL_CHECK_EQ(AspectWidth(600, 1024, 768), 800); // a 4:3 screen keeps 4:3
+}
+
 OBL_TEST_CASE("geometry.image_rect_pillarbox_and_letterbox")
 {
     obl::screen::Rect wide = ImageRect(800, 600, 1920, 1080); // 1440x1080, bars left and right

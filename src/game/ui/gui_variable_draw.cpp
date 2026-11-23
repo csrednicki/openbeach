@@ -13,6 +13,7 @@
 #include "game/ui/gui_variable_lifecycle.h"
 
 #include "game/game/game_accessors.h"
+#include "game/game/settings_store.h"
 #include "game/game/host_text.h"
 #include "game/ui/gui_content_runtime.h"
 #include "game/ui/gui_definitions.h"
@@ -63,6 +64,7 @@ public:
     int WholeHour(float time) const override { return game::GameTimeWholeHour(time); }
     int QuarterMinutes(float time) const override { return game::GameTimeQuarterMinutes(time); }
     Swprintf Format() const override { return ui::host_text::Print; }
+    int BarHideSeconds() const override { return game::settings_store::Current().m_barHideSeconds; }
 
     bool ProviderText(const char* key, Char16* out) const override
     {

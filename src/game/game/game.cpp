@@ -10,10 +10,13 @@
 #include "game/ui/palette_modifiers.h"
 #include "game/ui/music_player.h"
 #include "game/ui/renderer_api.h"
+#include "game/ui/resolutions.h"
+#include "game/ui/bar_slide.h"
 #include "game/ui/cursor.h"
 #include "game/game/diagnostics.h"
 #include "game/game/game_host.h"
 #include "game/ui/image.h"
+#include "game/ui/screen_backdrop.h"
 #include "game/ui/input.h"
 #include "core/key_code.h"
 #include "game/ui/sound_api.h"
@@ -377,6 +380,7 @@ void DrawFullscreenTga(Game*, const char* path)
     int position[2] = {0, 0};
     int rect[4] = {0, 0, 800, 600};
     ui::renderer::DrawImage(GetRenderer(), position, rect, image, 0, 0, 0);
+    ui::screen_backdrop::Shown(path);
     if (image) {
         ui::images::Destruct(image);
         ::operator delete(image);
@@ -685,29 +689,63 @@ void DrawOverlay(ui::GuiManager* gui)
     ui::renderer::SetActiveSurface(gui->m_renderer, 0);
     gui->m_renderer->m_directMode = 1;
     if (gui->m_modeObject) gui->m_modeObject->DrawScreen();
+    // The progress bar holding the scenario's goals.
+    auto drawProgress = [gui] {
+        ui::renderer::BlitSurface(gui->m_renderer, gui->m_progressX0, gui->m_progressY0, gui->m_progressSurface);
+        if (gui->m_progressVisible && gui->m_progressBig && gui->m_progressDialog)
+            (static_cast<ui::GuiWidget*>(gui->m_progressDialog))->DrawOverlay();
+    };
+    // Beside a centred bottom panel the goals stand on its left (ui::SetBarSide) and slide with it.
+    const bool goalsBeside = ui::CenteredBar() && gui->m_progressVisible && gui->m_mode != 2;
     if (gui->m_mode != 6) {
         if (gui->m_mode != 2) {
-            ui::renderer::BlitSurface(gui->m_renderer, 0, height - gui->m_barHeight, gui->m_barSurface);
-            if (gui->m_mainItem) (static_cast<ui::GuiWidget*>(gui->m_mainItem))->DrawOverlay();
-            if (gui->m_balloon) {
-                int ticker[4] = {gui->m_tickerLeft, gui->m_tickerTop, gui->m_tickerRight - gui->m_tickerLeft,
-                        gui->m_tickerBottom - gui->m_tickerTop};
-                ui::renderer::SetViewport(gui->m_renderer, ticker);
-                (static_cast<ui::GuiWidget*>(gui->m_balloon))->Invalidate();
-                (static_cast<ui::GuiWidget*>(gui->m_balloon))->Draw();
-                int full[4] = {0, 0, gui->m_renderer->m_width, gui->m_renderer->m_height};
-                ui::renderer::SetViewport(gui->m_renderer, full);
+            // A centred panel slides out of sight while the player is idle (ui::BarHiddenRows): a sliding one is drawn in place with
+            // everything on it, then its rows move down over the map saved from under it (bar_slide.h). The strip holds the goals
+            // beside it too.
+            const int barX = ui::BarOffsetX(width), barTop = height - gui->m_barHeight;
+            const int stripX = goalsBeside ? ui::BarSideX(width) : barX;
+            const int stripWidth = barX + ui::BarLayoutWidth(width) - stripX;
+            const int stripTop = goalsBeside ? std::min(barTop, gui->m_progressY0) : barTop;
+            const int rows = height - stripTop;
+            const int hidden = ui::BarHiddenRows(rows);
+            static std::vector<uint16_t> mapUnderBar;
+            const bool sliding = hidden > 0 && hidden < rows;
+            if (sliding) {
+                ui::renderer::SetActiveSurface(gui->m_renderer, 0); // the mode's DrawScreen may have left another
+                if (const uint16_t* bits = ui::renderer::GetBackBufferBits(gui->m_renderer)) {
+                    ui::SaveStrip(
+                            bits, ui::renderer::GetSurfacePitch(gui->m_renderer) / 2, stripX, stripTop, stripWidth, rows, mapUnderBar);
+                    ui::renderer::UnlockSurface(gui->m_renderer);
+                }
+            }
+            if (hidden < rows && goalsBeside) drawProgress();
+            if (hidden < rows) {
+                ui::renderer::BlitSurface(gui->m_renderer, barX, barTop, gui->m_barSurface);
+                if (gui->m_mainItem) (static_cast<ui::GuiWidget*>(gui->m_mainItem))->DrawOverlay();
+                if (gui->m_balloon) {
+                    int ticker[4] = {gui->m_tickerLeft, gui->m_tickerTop, gui->m_tickerRight - gui->m_tickerLeft,
+                            gui->m_tickerBottom - gui->m_tickerTop};
+                    ui::renderer::SetViewport(gui->m_renderer, ticker);
+                    (static_cast<ui::GuiWidget*>(gui->m_balloon))->Invalidate();
+                    (static_cast<ui::GuiWidget*>(gui->m_balloon))->Draw();
+                    int full[4] = {0, 0, gui->m_renderer->m_width, gui->m_renderer->m_height};
+                    ui::renderer::SetViewport(gui->m_renderer, full);
+                }
+            }
+            if (sliding && mapUnderBar.size() == static_cast<size_t>(stripWidth) * static_cast<size_t>(rows)) {
+                ui::renderer::SetActiveSurface(gui->m_renderer, 0);
+                if (uint16_t* bits = ui::renderer::GetBackBufferBits(gui->m_renderer)) {
+                    ui::SlideStrip(bits, ui::renderer::GetSurfacePitch(gui->m_renderer) / 2, stripX, stripTop, stripWidth, rows, hidden,
+                            mapUnderBar);
+                    ui::renderer::UnlockSurface(gui->m_renderer);
+                }
             }
         }
         if (gui->m_radarEnabled) {
             ui::renderer::BlitSurface(gui->m_renderer, gui->m_panelX0, gui->m_panelY0, gui->m_radarSurface);
             gui->DrawRadar();
         }
-        if (gui->m_progressVisible) {
-            ui::renderer::BlitSurface(gui->m_renderer, gui->m_progressX0, gui->m_progressY0, gui->m_progressSurface);
-            if (gui->m_progressVisible && gui->m_progressBig && gui->m_progressDialog)
-                (static_cast<ui::GuiWidget*>(gui->m_progressDialog))->DrawOverlay();
-        }
+        if (gui->m_progressVisible && !goalsBeside) drawProgress();
         // A reverse walk: the sentinel is read once, the first node again before every step (a draw may open or close a dialog).
         for (ui::GuiManagerDialogNode* it = gui->m_dialogs; it != gui->m_dialogs->m_next; it = it->m_previous) {
             ui::GuiManagerDialogEntry* entry = it->m_previous->m_entry;

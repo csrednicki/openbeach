@@ -10,12 +10,17 @@
 
 #include "core/text16.h"
 #include "game/ui/resolutions.h"
+#include "game/ui/bar_slide.h"
 
+#include "game/game/game.h"
 #include "game/game/game_accessors.h"
+#include "game/game/settings_store.h"
 #include "game/ui/display_geometry.h"
 #include "core/log.h"
 
 #include <algorithm>
+#include <chrono>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -43,6 +48,26 @@ std::vector<Resolution> g_resolutions;
 std::vector<TableEntry> g_table;
 int g_lastScreenHeight;
 
+// The list's entries, ordered by width and then height.
+void FillTable(std::vector<ui::DisplaySize> sizes)
+{
+    std::sort(sizes.begin(), sizes.end(), [](ui::DisplaySize a, ui::DisplaySize b) { return a.cx != b.cx ? a.cx < b.cx : a.cy < b.cy; });
+    for (ui::DisplaySize s : sizes) {
+        Resolution r{s.cx, s.cy, std::to_string(s.cx) + "_" + std::to_string(s.cy), text16::Decimal(s.cx) + u"x" + text16::Decimal(s.cy)};
+        g_resolutions.push_back(std::move(r));
+    }
+    g_table.reserve(g_resolutions.size() + 1);
+    for (const auto& r : g_resolutions) g_table.push_back({1, r.key.c_str(), r.height});
+    g_table.push_back({}); // a zero entry ends the list, as in k_ResolutionTable
+}
+
+void LogTable()
+{
+    std::string list;
+    for (const auto& r : g_resolutions) list += r.key + " ";
+    OBL_LOG("resolutions: %s", list.c_str());
+}
+
 void BuildTable(int monitorW, int monitorH)
 {
     static const ui::DisplaySize kCandidates[] = {
@@ -55,15 +80,7 @@ void BuildTable(int monitorW, int monitorH)
     // Native size (borderless). The list selects by height, so it replaces a same-height entry.
     std::erase_if(sizes, [&](ui::DisplaySize s) { return s.cy == monitorH; });
     sizes.push_back({monitorW, monitorH});
-    std::sort(sizes.begin(), sizes.end(), [](ui::DisplaySize a, ui::DisplaySize b) { return a.cx != b.cx ? a.cx < b.cx : a.cy < b.cy; });
-
-    for (ui::DisplaySize s : sizes) {
-        Resolution r{s.cx, s.cy, std::to_string(s.cx) + "_" + std::to_string(s.cy), text16::Decimal(s.cx) + u"x" + text16::Decimal(s.cy)};
-        g_resolutions.push_back(std::move(r));
-    }
-    g_table.reserve(g_resolutions.size() + 1);
-    for (const auto& r : g_resolutions) g_table.push_back({1, r.key.c_str(), r.height});
-    g_table.push_back({}); // a zero entry ends the list, as in k_ResolutionTable
+    FillTable(std::move(sizes));
 }
 
 const Resolution* FindByHeight(int height)
@@ -87,9 +104,15 @@ bool IsListedResolutionWidth(int width)
 void BuildResolutionTable(int monitorWidth, int monitorHeight)
 {
     BuildTable(monitorWidth, monitorHeight);
-    std::string list;
-    for (const auto& r : g_resolutions) list += r.key + " ";
-    OBL_LOG("resolutions: %s", list.c_str());
+    LogTable();
+}
+
+void BuildAspectResolutionTable(int screenWidth, int screenHeight)
+{
+    std::vector<ui::DisplaySize> sizes;
+    for (int height : {360, 480, 600, 768}) sizes.push_back({AspectWidth(height, screenWidth, screenHeight), height});
+    FillTable(std::move(sizes));
+    LogTable();
 }
 
 const Char16* ResolutionText(const char* key)
@@ -120,6 +143,74 @@ std::span<const ResolutionListEntry> ResolutionListEntries()
 {
     if (!g_table.empty()) return {g_table.data(), g_table.size() - 1};
     return kBaseResolutions;
+}
+
+namespace {
+bool g_centeredBar;
+int g_barSide; // the goals' panel beside the centred bottom panel (SetBarSide)
+
+// The sandbox has no goals (the progress bar stays hidden, gui_tooltip.cpp): the panel is centred on its own there.
+int GoalsSide()
+{
+    const game::Game* game = game::GetGame();
+    return game && game->m_sandbox ? 0 : g_barSide;
+}
+BarSlide g_barSlide;
+
+uint32_t NowMs()
+{
+    return static_cast<uint32_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+} // namespace
+
+void SetCenteredBar(bool centered)
+{
+    g_centeredBar = centered;
+}
+
+bool CenteredBar()
+{
+    return g_centeredBar;
+}
+
+void WakeBar()
+{
+    if (g_centeredBar) g_barSlide.Wake(NowMs());
+}
+
+int BarHiddenRows(int barHeight)
+{
+    if (!g_centeredBar) return 0;
+    if (game::settings_store::Exists()) {
+        const game::Settings& settings = game::settings_store::Current();
+        g_barSlide.SetIdle(settings.m_barAutoHide ? static_cast<uint32_t>(settings.m_barHideSeconds) * 1000u : UINT32_MAX);
+    }
+    return g_barSlide.HiddenRows(NowMs(), barHeight);
+}
+
+int BarLayoutWidth(int screenWidth)
+{
+    if (!g_centeredBar) return screenWidth;
+    return screenWidth >= 800 ? 800 : screenWidth >= 640 ? 640 : screenWidth;
+}
+
+int BarOffsetX(int screenWidth)
+{
+    const int layout = BarLayoutWidth(screenWidth);
+    if (!g_centeredBar) return (screenWidth - layout) / 2;
+    // The goals' panel and the bottom panel side by side, centred together; the bottom panel stays on the screen.
+    return CentredBarX(screenWidth, layout, GoalsSide());
+}
+
+void SetBarSide(int width)
+{
+    g_barSide = width;
+}
+
+int BarSideX(int screenWidth)
+{
+    return g_centeredBar ? std::max(0, BarOffsetX(screenWidth) - GoalsSide()) : 0;
 }
 
 bool FindExtendedResolution(int height, int* width)

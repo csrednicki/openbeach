@@ -61,8 +61,9 @@ which adds OpenBeach's own controls to the original dialogs: today two sliders (
 texts `OBL_CURSOR_SPEED`, `OBL_SCROLL_SPEED` and their tooltips from `game/game/own_texts.cpp`; stored as `[Video] CursorSpeed` and
 `ScrollSpeed`, 0-100) into the
 Video tab of `InGameOptions`, below the checkbox that holds `GAME_NUDGE`. It does so only when the host's pointer is a thumb stick
-(`own_controls::SetPadPointer`, the handheld build, [handheld.md](../../../build/handheld.md)); the converter and the files stay as the
-installation had them.
+(`own_controls::SetPadPointer`, the handheld build, [handheld.md](../../../build/handheld.md)). On touch screens it also adds a
+Controls tab after the Audio tab (`own_controls::SetTouchScreen`, [android.md](../../../build/android.md#the-controls-options)). The
+converter and the files stay as the installation had them.
 
 The code page tables moved from the converter to `core/code_pages.*` (`CodePoint`, `ByteOf`, `Encode`) for this reader.
 

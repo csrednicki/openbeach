@@ -20,6 +20,55 @@ const std::string kVideoTab = "  <TABVideoOptions(1, 2, 3, 4, TAB_IMAGE, TAB_TIP
 
 } // namespace
 
+OBL_TEST_CASE("own_controls.controls_tab_follows_the_audio_tab")
+{
+    // The Audio tab's body holds a nested brace (a radio group): the tab ends at the brace that matches its own.
+    const std::string script =
+            "// options\nDialogItem InGameOptions(CY10, 190, 515, 481, P, 10, 1)\n{\n"
+            "    <TABAudioOptions(439, 131, 483, 162, A, B)>\n    {\n      RadioGroup(1, 2, 3, 4, G, None)\n      {\n"
+            "      }\n      Button(1, 2, 3, 4, C, D, ResetAudioOptions, None, E)\n    }\n  }\n  Button(9, 9, 9, 9, OK)\n";
+    own_controls::SetTouchScreen(false);
+    OBL_CHECK(own_controls::Apply(script) == script); // no touch screen, no tab
+    own_controls::SetTouchScreen(true);
+    const std::string out = own_controls::Apply(script);
+    const size_t reset = out.find("ResetAudioOptions"), tab = out.find("<TABOblControls(439, 162, 483, 193, OBL_options_t_controls");
+    const size_t ok = out.find("Button(9, 9, 9, 9, OK)");
+    OBL_CHECK(reset != std::string::npos && tab != std::string::npos && ok != std::string::npos);
+    OBL_CHECK(reset < tab && tab < ok); // after the Audio tab, inside the tab window
+    OBL_CHECK(out.find("    }\n\n        // controls tab") != std::string::npos); // right after the Audio tab's closing line
+    for (const char* name : {"TOUCH_CONTROLS", "MAGNIFIER", "BAR_AUTOHIDE", "BAR_HIDE_DELAY", "BAR_HIDE_SECONDS"})
+        OBL_CHECK(out.find(name) != std::string::npos);
+    own_controls::SetTouchScreen(false);
+}
+
+OBL_TEST_CASE("own_controls.touch_screens_spread_the_video_rows")
+{
+    const std::string video = "// options\nDialogItem InGameOptions(CY10, 190, 515, 481, P, 10, 1)\n{\n"
+                              "  <TABVideoOptions(1, 2, 3, 4, A, B)>\n  {\n"
+                              "    Text(32, 73, 176, 88, RES, 0, 0, 1)\n"
+                              "    Text(32, 103, 176, 118, SEA, 0, 0, 1)\n"
+                              "    CheckBox(194, 103, 210, 118, BOX, GAME_SEA, TIP)\n"
+                              "    Text(32, 148, 176, 163, NUDGE, 0, 0, 1)\n"
+                              "    CheckBox(194,148,210,163, BOX, GAME_NUDGE, TIP)\n"
+                              "    Button(194, 242, 359, 266, BIG, RESET, ResetVideoOptions, None, TIP)\n  }\n"
+                              "  <TABAudioOptions(1, 2, 3, 4, A, B)>\n  {\n    Text(32, 103, 176, 118, MUSIC, 0, 0, 1)\n  }\n";
+    own_controls::SetPadPointer(true);
+    own_controls::SetTouchScreen(true);
+    const std::string out = own_controls::Apply(video);
+    OBL_CHECK(out.find("Text(32, 73, 176, 88, RES") != std::string::npos); // the resolution row stays
+    OBL_CHECK(out.find("CheckBox(194, 103, 210, 118, BOX, GAME_SEA") != std::string::npos);
+    OBL_CHECK(out.find("Text(32, 193, 176, 208, NUDGE") != std::string::npos); // the fourth row, 30 apart
+    OBL_CHECK(out.find("CheckBox(194,193,210,208, BOX, GAME_NUDGE") != std::string::npos);
+    OBL_CHECK(out.find("Button(194, 242, 359, 266") != std::string::npos);
+    OBL_CHECK(out.find("Text(32, 103, 176, 118, MUSIC") != std::string::npos); // the Audio tab is left alone
+    // The speed sliders are in the Controls tab, not the Video tab.
+    const size_t videoTab = out.find("<TABVideoOptions"), cursor = out.find("CURSOR_SPEED");
+    OBL_CHECK(videoTab != std::string::npos && cursor != std::string::npos && cursor < videoTab); // in the Define before the dialog
+    OBL_CHECK(out.find("OblPadOnly", out.find("<TABOblControls")) != std::string::npos); // which the Controls tab names
+    own_controls::SetTouchScreen(false);
+    own_controls::SetPadPointer(false);
+}
+
 OBL_TEST_CASE("own_controls.no_stick_leaves_the_script_alone")
 {
     own_controls::SetPadPointer(false);

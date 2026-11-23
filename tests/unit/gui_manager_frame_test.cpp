@@ -95,6 +95,8 @@ struct Env {
     int Wheel() { return wheel; }
     int LeftButton() { return left; }
     int RightButton() { return right; }
+    bool landing = false;
+    bool TouchSnap(View*, int&, int&, int, int) { return landing; }
     void RadarMouse(View*, int, int, int s) { log.push_back("radar:" + std::to_string(s)); }
     void ProgressBarMouse(View*, int, int, int s) { log.push_back("progress:" + std::to_string(s)); }
     void ModeWheel(void*, int, int, int) { log.push_back("modeW"); }
@@ -185,6 +187,23 @@ OBL_TEST_CASE("UpdateMouse keeps the order while any dialog is modal and gives t
     UpdateMouse(taken, f.view);
     // The front dialog took the click: no reordering, no left click for the HUD or the mode, but the HUD still gets the right button.
     OBL_CHECK((taken.log == std::vector<std::string>{"M0:1", "H0", "mainR:0", "radar:1", "progress:1"}));
+}
+
+OBL_TEST_CASE("UpdateMouse lets a landing finger hover before its press")
+{
+    // A touch screen's press that starts this frame (gui_touch_snap): the GUI first sees the cursor arrive without buttons, so a
+    // button, which takes a press only after it was hovered (gui_controls::ButtonMouse), takes the finger's tap.
+    Fixture f;
+    f.Add(0, 1, false);
+    Env env{f};
+    env.landing = true;
+    FakeMode mode;
+    f.view->m_modeObject = &mode;
+    f.view->m_mode = 4;
+    UpdateMouse(env, f.view);
+    const std::vector<std::string> expected = {
+            "M0:0", "H0", "radar:0", "progress:0", "modeM:0,0", "M0:1", "H0", "radar:1", "progress:1", "modeM:1,0"};
+    OBL_CHECK(env.log == expected);
 }
 
 OBL_TEST_CASE("SwitchMode replaces the mode object; mode 3 has none and mode 6 drops the bar")

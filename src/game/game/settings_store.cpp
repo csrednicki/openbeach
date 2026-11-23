@@ -51,10 +51,20 @@ void SaveSound(const Settings& s)
     IniEnv env{s.m_iniPath.c_str()};
     settings::SaveSound(env, CaptureSound(s));
 }
-void LoadVideo(Settings& s)
+settings::VideoValues CaptureVideo(const Settings& s)
 {
     settings::VideoValues values{s.m_resolutionWidth, s.m_resolutionHeight, s.m_nudgeScroll, s.m_seaEffects, s.m_lightEffects, s.m_keyline,
-            s.m_cursorSpeed, s.m_scrollSpeed};
+            s.m_cursorSpeed, s.m_scrollSpeed, own_controls::PadPointer()};
+    values.touchControls = s.m_touchControls;
+    values.magnifier = s.m_magnifier;
+    values.barAutoHide = s.m_barAutoHide;
+    values.barHideSeconds = s.m_barHideSeconds;
+    values.controls = own_controls::TouchScreen();
+    return values;
+}
+void LoadVideo(Settings& s)
+{
+    settings::VideoValues values = CaptureVideo(s);
     IniEnv env{s.m_iniPath.c_str()};
     settings::LoadVideo(env, values);
     s.m_resolutionWidth = values.resWidth;
@@ -65,13 +75,15 @@ void LoadVideo(Settings& s)
     s.m_keyline = values.keyline;
     s.m_cursorSpeed = values.cursorSpeed;
     s.m_scrollSpeed = values.scrollSpeed;
+    s.m_touchControls = values.touchControls;
+    s.m_magnifier = values.magnifier;
+    s.m_barAutoHide = values.barAutoHide;
+    s.m_barHideSeconds = values.barHideSeconds;
 }
 void SaveVideo(const Settings& s)
 {
     IniEnv env{s.m_iniPath.c_str()};
-    settings::SaveVideo(env,
-            settings::VideoValues{s.m_resolutionWidth, s.m_resolutionHeight, s.m_nudgeScroll, s.m_seaEffects, s.m_lightEffects, s.m_keyline,
-                    s.m_cursorSpeed, s.m_scrollSpeed, own_controls::PadPointer()});
+    settings::SaveVideo(env, CaptureVideo(s));
 }
 
 // The built-in tracks are added without a file check: the playlist checks a track when it opens it (media_files.h).

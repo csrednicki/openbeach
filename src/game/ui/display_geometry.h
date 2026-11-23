@@ -18,6 +18,13 @@ struct DisplaySize {
     int cx, cy;
 };
 
+// The width of a game resolution `height` pixels tall at the screen's aspect (the Android list, resolutions.h), rounded to an even
+// number of pixels.
+inline int AspectWidth(int height, int screenWidth, int screenHeight)
+{
+    return 2 * static_cast<int>(std::lround(height * static_cast<double>(screenWidth) / (2.0 * std::max(screenHeight, 1))));
+}
+
 // Integer bounds keep the presenter, cursor and GDI fallback on the same pixel edges.
 inline screen::Rect ImageRect(int width, int height, int outputWidth, int outputHeight)
 {

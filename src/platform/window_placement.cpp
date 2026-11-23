@@ -20,6 +20,8 @@
 #endif
 
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #ifdef __EMSCRIPTEN__
@@ -138,6 +140,16 @@ void PlaceGameWindow(void* window, int width, int height)
 
 bool InitializeResolutions()
 {
+#ifdef __ANDROID__
+    // The phone's screen in landscape, which the activity passes (OpenBeachActivity): the game's heights at its aspect.
+    int screenW = 0, screenH = 0;
+    const char* screen = std::getenv("OBL_SCREEN_SIZE");
+    if (screen && std::sscanf(screen, "%dx%d", &screenW, &screenH) == 2 && screenW > 0 && screenH > 0) {
+        ui::BuildAspectResolutionTable(screenW, screenH);
+        ui::SetCenteredBar(true); // the widths are the phone's, wider than the panel's 800
+        return true;
+    }
+#endif
     const ui::DisplaySize monitor = platform::PrimaryMonitorSize();
     ui::BuildResolutionTable(monitor.cx, monitor.cy);
     return true;

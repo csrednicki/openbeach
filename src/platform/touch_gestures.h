@@ -6,7 +6,9 @@
 //   drag with one finger   camera drag (the right button held, the motion as deltas)
 //   press and hold         left button held until the finger lifts (a slider, a drag in the interface)
 //   tap with two fingers   right click
-//   drag with two fingers  the wheel
+//   drag with two fingers  the wheel (up and down)
+//   swipe with two fingers one game speed step: to the right faster, to the left slower
+//   pinch with two fingers one step of the game's zoom (the fingers a quarter wider or narrower)
 // A finger that has not moved yet only places the cursor; what it turns into is decided by its motion and by time.
 // While the GUI places things (TouchAim) one finger is the cursor instead and the map is not dragged.
 
@@ -41,6 +43,8 @@ struct TouchAction {
         RightUp,
         Drag, // camera drag motion since the last one: (x, y) are the deltas in client pixels
         Wheel, // x = 0, y = notches (a finger moving up scrolls down, like a touch list)
+        Zoom, // a pinch step: y = 1 closer (fingers apart), -1 farther
+        Speed, // a two-finger swipe: y = 1 faster (to the right), -1 slower
     };
     Kind kind;
     float x, y;
@@ -78,6 +82,10 @@ public:
     static constexpr uint32_t kTapMs = 350;
     static constexpr uint32_t kHoldMs = 450;
     static constexpr float kPixelsPerNotch = 48.0f;
+    // A pinch step: the fingers' distance grows or shrinks by this ratio (and at least by the slop). A swipe: two fingers this far
+    // sideways (twice as far as up or down when they set off).
+    static constexpr float kPinchRatio = 1.25f;
+    static constexpr float kSwipePixels = 80.0f;
 
 private:
     enum class Mode {
@@ -88,6 +96,8 @@ private:
         Hold, // the left button is held by one finger
         Paint, // the left button is held by one finger for painting (TouchAim::Paint)
         Scroll, // two fingers scroll
+        Pinch, // two fingers made their zoom step
+        Swipe, // two fingers move sideways: one speed step once far enough
         Done, // decided (or too many fingers): nothing more until every finger is up
     };
     struct Finger {
@@ -114,6 +124,28 @@ private:
         y /= count;
     }
     static float Distance(float ax, float ay, float bx, float by) { return std::hypot(ax - bx, ay - by); }
+    float Span() const { return Distance(m_fingers[0].x, m_fingers[0].y, m_fingers[1].x, m_fingers[1].y); }
+    // A pinch step once the span left `m_span` by kPinchRatio (and the slop): true when one was made, and the span is the new start.
+    bool PinchStep(float span)
+    {
+        if (std::fabs(span - m_span) <= kSlop * m_scale) return false;
+        if (span >= m_span * kPinchRatio)
+            Emit(TouchAction::Kind::Zoom, 0, 1);
+        else if (span * kPinchRatio <= m_span)
+            Emit(TouchAction::Kind::Zoom, 0, -1);
+        else
+            return false;
+        m_span = span;
+        return true;
+    }
+    // A swipe's one step, once the fingers' centre is kSwipePixels to a side of where it set off; the rest of the swipe is nothing.
+    void SwipeStep(float cx)
+    {
+        const float sideways = cx - m_startX;
+        if (std::fabs(sideways) < kSwipePixels * m_scale) return;
+        Emit(TouchAction::Kind::Speed, 0, sideways > 0 ? 1.0f : -1.0f);
+        m_mode = Mode::Done;
+    }
     void Release()
     {
         // Whatever the gesture holds goes up where its finger was.
@@ -127,6 +159,7 @@ private:
     int64_t m_primary = 0; // the finger of One, Pan and Hold
     float m_startX = 0, m_startY = 0; // where the gesture began (the primary finger; the centroid of Two)
     float m_lastX = 0, m_lastY = 0; // the last position the gesture used
+    float m_span = 0; // Two and Pinch: the fingers' distance the next pinch step counts from
     uint32_t m_startMs = 0;
     float m_scale = 1.0f;
     TouchAim m_nextAim = TouchAim::None;
@@ -155,6 +188,7 @@ inline void TouchGestures::FingerDown(int64_t id, float x, float y, uint32_t ms)
         m_lastX = m_startX;
         m_lastY = m_startY;
         m_startMs = ms;
+        m_span = Span();
     } else if (m_mode == Mode::One || m_mode == Mode::Two) {
         m_mode = Mode::Done; // three fingers are nothing the game has
     }
@@ -202,7 +236,19 @@ inline void TouchGestures::FingerMove(int64_t id, float x, float y, uint32_t ms)
     case Mode::Two: {
         float cx, cy;
         Centroid(cx, cy);
-        if (Distance(cx, cy, m_startX, m_startY) <= kSlop * m_scale) break;
+        // A pinch changes the fingers' distance well beyond their centre's motion; a two-finger drag moves the centre with it. A
+        // pinch waits for its step here: with one finger still, the centre moves half as far as the span and leaves the slop first.
+        const float moved = Distance(cx, cy, m_startX, m_startY), span = Span();
+        if (std::fabs(span - m_span) > 1.5f * moved) {
+            if (PinchStep(span)) m_mode = Mode::Pinch;
+            break;
+        }
+        if (moved <= kSlop * m_scale) break;
+        if (std::fabs(cx - m_startX) > 2 * std::fabs(cy - m_startY)) { // sideways: the game speed, not the wheel
+            m_mode = Mode::Swipe;
+            SwipeStep(cx);
+            break;
+        }
         m_mode = Mode::Scroll;
         Emit(TouchAction::Kind::Wheel, 0, (cy - m_startY) / (kPixelsPerNotch * m_scale));
         m_lastX = cx;
@@ -215,6 +261,13 @@ inline void TouchGestures::FingerMove(int64_t id, float x, float y, uint32_t ms)
         Emit(TouchAction::Kind::Wheel, 0, (cy - m_lastY) / (kPixelsPerNotch * m_scale));
         m_lastX = cx;
         m_lastY = cy;
+        break;
+    }
+    case Mode::Pinch: break; // one step a pinch: the fingers must leave before the next
+    case Mode::Swipe: {
+        float cx, cy;
+        Centroid(cx, cy);
+        SwipeStep(cx);
         break;
     }
     case Mode::Idle:
@@ -267,7 +320,9 @@ inline void TouchGestures::FingerUp(int64_t id, float x, float y, uint32_t ms)
         Release();
         m_mode = Mode::Done;
         break;
-    case Mode::Scroll: m_mode = Mode::Done; break;
+    case Mode::Scroll:
+    case Mode::Pinch:
+    case Mode::Swipe: m_mode = Mode::Done; break;
     case Mode::Idle:
     case Mode::Done: break;
     }

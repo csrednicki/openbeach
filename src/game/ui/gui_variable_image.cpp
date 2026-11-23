@@ -1,6 +1,7 @@
 #include "game/ui/gui_variable_image.h"
 
 #include "core/ascii_case.h"
+#include "game/ui/screen_backdrop.h"
 
 #include <cmath>
 #include <cstring>
@@ -464,7 +465,12 @@ Result DrawWidget(const Widget& widget, const Env& env, Canvas& canvas)
         }
         PlainPicture(widget, canvas, env.SpriteName(slot), CreateCall::Sprite);
     } else if (Is(key, "SCENARIO_PIC_LARGE")) {
-        FramePicture(widget, canvas, "ui3_fe_is_pics_large", CreateCall::Bank, env.ScenarioPicture());
+        Widget moved = widget; // onto a wide screen's card (screen_backdrop.h, Android)
+        int dx = 0, dy = 0;
+        ui::screen_backdrop::PictureShift(dx, dy);
+        moved.x0 += dx;
+        moved.y0 += dy;
+        FramePicture(moved, canvas, "ui3_fe_is_pics_large", CreateCall::Bank, env.ScenarioPicture());
     } else if (Is(key, "GUEST_PHOTO")) {
         const void* guest = env.Provider();
         if (!guest) return Result::Undefined;

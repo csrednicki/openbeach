@@ -90,7 +90,14 @@ void Image(Renderer* r, const int* position, const int* rect, const RendererImag
     if (!obl::ui::renderer::ClipRect(r, &x, &y, &l, &t, &right, &bottom)) return;
     const int width = right - l, height = bottom - t;
 
-    if (mode == 0) {
+    if (mode == 0 && image->m_bpp == 16) { // a screen's wide version (image.cpp, Android): its 16-bit pixels, opaque
+        for (int row = 0; row < height; ++row)
+            for (int column = 0; column < width; ++column) {
+                uint32_t& out = r->m_workBuffer[(y + row) * r->m_width + x + column];
+                out = (out & 0xffff0000u) | image->m_pixels16[static_cast<size_t>(t + row) * image->m_width + l + column];
+            }
+        g_opaque.Count();
+    } else if (mode == 0) {
         if (!(flags & 1)) {
             ui::pixel_primitives::Bitmap8Opaque32(
                     image->m_pixels, image->m_width, r->m_workBuffer, r->m_width, l, t, x, y, width, height, image->m_palette16);

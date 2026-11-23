@@ -5,6 +5,7 @@
 #include "game/ui/playlist_scan.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -20,6 +21,8 @@ namespace obl::settings {
 
 inline constexpr const char* kSoundSection = "Sound";
 inline constexpr const char* kVideoSection = "Video";
+// The Controls options tab of touch screens (own_controls.h); saved with the Video section.
+inline constexpr const char* kControlsSection = "Controls";
 // A key that is missing reads back as this text, so a key whose value is literally "default" counts as missing too.
 inline constexpr const char* kMissing = "default";
 inline constexpr int kSoundBuffer = 0x400;
@@ -42,6 +45,21 @@ inline constexpr int kDefaultCursorSpeed = 30;
 // The map's scroll speed in percent of the original (the Video options slider); never applied below kMinScrollSpeed.
 inline constexpr int kDefaultScrollSpeed = 100;
 inline constexpr int kMinScrollSpeed = 10;
+// How long the centred bottom panel stays in sight after the last action (ui::BarHiddenRows), in seconds (the Controls slider).
+inline constexpr int kDefaultBarHideSeconds = 4;
+inline constexpr int kMinBarHideSeconds = 1;
+inline constexpr int kMaxBarHideSeconds = 60;
+// The slider's share (0..1, in hundredths) and the whole seconds it stands for, both ways.
+inline int BarHideSeconds(float share)
+{
+    const float clamped = std::clamp(share, 0.0f, 1.0f);
+    return kMinBarHideSeconds + static_cast<int>(std::lround(clamped * static_cast<float>(kMaxBarHideSeconds - kMinBarHideSeconds)));
+}
+inline float BarHideShare(int seconds)
+{
+    return static_cast<float>(std::clamp(seconds, kMinBarHideSeconds, kMaxBarHideSeconds) - kMinBarHideSeconds) /
+            static_cast<float>(kMaxBarHideSeconds - kMinBarHideSeconds);
+}
 
 struct VideoValues {
     int resWidth = 0;
@@ -53,6 +71,12 @@ struct VideoValues {
     int cursorSpeed = kDefaultCursorSpeed;
     int scrollSpeed = kDefaultScrollSpeed;
     bool padSpeeds = false; // CursorSpeed and ScrollSpeed are saved only where a stick is the pointer (own_controls.h)
+    // [Controls]: touch gestures (else the virtual D-pad and touchpad), the D-pad's magnifier, the panel's auto-hide and its delay.
+    uint8_t touchControls = 1;
+    uint8_t magnifier = 1;
+    uint8_t barAutoHide = 1;
+    int barHideSeconds = kDefaultBarHideSeconds;
+    bool controls = false; // [Controls] is saved only where the Controls tab is (touch screens)
 };
 
 namespace detail {
@@ -143,6 +167,11 @@ template<class Env> void LoadVideo(Env& env, VideoValues& values)
         values.cursorSpeed = std::clamp(std::atoi(text.c_str()), 0, 100);
     if (detail::Get(env, kVideoSection, "ScrollSpeed", kVideoBuffer, text))
         values.scrollSpeed = std::clamp(std::atoi(text.c_str()), 0, 100);
+    if (detail::Get(env, kControlsSection, "TouchControls", kVideoBuffer, text)) values.touchControls = std::atoi(text.c_str()) != 0;
+    if (detail::Get(env, kControlsSection, "Magnifier", kVideoBuffer, text)) values.magnifier = std::atoi(text.c_str()) != 0;
+    if (detail::Get(env, kControlsSection, "BarAutoHide", kVideoBuffer, text)) values.barAutoHide = std::atoi(text.c_str()) != 0;
+    if (detail::Get(env, kControlsSection, "BarHideSeconds", kVideoBuffer, text))
+        values.barHideSeconds = std::clamp(std::atoi(text.c_str()), kMinBarHideSeconds, kMaxBarHideSeconds);
 }
 
 template<class Env> void SaveVideo(Env& env, const VideoValues& values)
@@ -156,6 +185,12 @@ template<class Env> void SaveVideo(Env& env, const VideoValues& values)
     if (values.padSpeeds) {
         env.Write(kVideoSection, "CursorSpeed", detail::Number(values.cursorSpeed));
         env.Write(kVideoSection, "ScrollSpeed", detail::Number(values.scrollSpeed));
+    }
+    if (values.controls) {
+        env.Write(kControlsSection, "TouchControls", detail::Number(values.touchControls));
+        env.Write(kControlsSection, "Magnifier", detail::Number(values.magnifier));
+        env.Write(kControlsSection, "BarAutoHide", detail::Number(values.barAutoHide));
+        env.Write(kControlsSection, "BarHideSeconds", detail::Number(values.barHideSeconds));
     }
 }
 

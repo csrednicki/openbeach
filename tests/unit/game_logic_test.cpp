@@ -37,6 +37,7 @@ struct FakeEnv {
 
 struct FakeSettings {
     uint8_t m_nudgeScroll = 0, m_seaEffects = 0, m_lightEffects = 0, m_keyline = 0;
+    uint8_t m_touchControls = 1, m_magnifier = 1, m_barAutoHide = 1;
 };
 
 struct FakeVariables {
@@ -215,6 +216,12 @@ OBL_TEST_CASE("Game logic stores GUI variables and forwards them")
     // A slot the registry does not know selects nothing.
     logic::SetVariable(game, "GAME_SCENARIO_SELECT", 40, env);
     OBL_CHECK(!game.m_selectedScenario.IsValid());
+    // The Controls tab's checkboxes (touch screens) only store their flag.
+    logic::SetVariable(game, "TOUCH_CONTROLS", 0, env);
+    logic::SetVariable(game, "MAGNIFIER", 0, env);
+    logic::SetVariable(game, "BAR_AUTOHIDE", 0, env);
+    OBL_CHECK(!env.settings.m_touchControls && !env.settings.m_magnifier && !env.settings.m_barAutoHide);
+    OBL_CHECK_EQ(Value(logic::GetVariable(game, "MAGNIFIER", env)), 0);
     const std::vector<std::string> expected = {"sea 1", "keyline 0", "speed 2", "playlist 9", "playlist 8", "unrecognized BOGUS"};
     OBL_CHECK(env.calls == expected);
 }

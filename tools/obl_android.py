@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """Builds OpenBeach for Android (docs/build/android.md): libmain.so with the NDK, then an APK with the SDK's own tools, no Gradle.
 
-    python tools/obl_android.py [--pad] [--out FILE.apk] [--version VER] [--install] [--run] [--serial HOST:PORT]
+    python tools/obl_android.py [--out FILE.apk] [--version VER] [--install] [--run] [--serial HOST:PORT]
         [--build-dir DIR] [--type RelWithDebInfo] [--keystore FILE --key-alias ALIAS] [-- cmake -D options]
 
 Needs the Android SDK (ANDROID_HOME, else the default folder of Android Studio) with an NDK, build-tools and a platform, a JDK
 (JAVA_HOME or javac on PATH), cmake and ninja (`pip install cmake ninja`). Result: <build-dir>/OpenBeach.apk (or --out) for
 arm64-v8a, signed with --keystore / ANDROID_KEYSTORE_PATH when given, else with ~/.android/debug.keystore (made on the first build).
---install puts it on the device (adb), --run starts it. --pad builds the test variant with the handheld's controls (a virtual
-D-pad and a touchpad, OBL_ANDROID_PAD) in build/android-arm64-pad/OpenBeach-pad.apk; it installs over the touch build.
+--install puts it on the device (adb), --run starts it.
 """
 import argparse
 import os
@@ -161,10 +160,11 @@ def build_apk(args, sdk, library):
     stage = build / "apk"
     shutil.rmtree(stage, ignore_errors=True)
 
-    # Resources (strings, shortcuts, icons) and assets (the L0 demo + licences). Link first to generate R.java for javac.
+    # Resources (strings, shortcuts, icons) and assets (the L0 demo, the wide screens + licences). Link first to generate R.java for javac.
     stage_resources(stage / "res")
     run(tool(tools, "aapt2"), "compile", "--dir", stage / "res", "-o", stage / "res.zip")
     shutil.copytree(ROOT / "data" / "packs" / "l0", stage / "assets" / "l0" / "packs" / "l0")
+    shutil.copytree(ROOT / "assets" / "screens_wide", stage / "assets" / "screens_wide")
     for doc in ("LICENSE", "THIRD_PARTY_NOTICES.md"):
         shutil.copy2(ROOT / doc, stage / "assets" / doc)
     name, code = version(args.version)
@@ -202,8 +202,7 @@ def build_apk(args, sdk, library):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--pad", action="store_true", help="the test build with a virtual D-pad and a touchpad (OBL_ANDROID_PAD)")
-    parser.add_argument("--build-dir", help="default: build/android-arm64, with --pad build/android-arm64-pad")
+    parser.add_argument("--build-dir", default=str(ROOT / "build" / "android-arm64"))
     parser.add_argument("--type", default="RelWithDebInfo")
     parser.add_argument("--version", help="override version.txt (e.g. 1.12.5-dev.abc1234)")
     parser.add_argument("--out", help="output APK path (default: <build-dir>/OpenBeach.apk)")
@@ -219,11 +218,7 @@ def main():
 
     # A virtualenv with `pip install cmake ninja` keeps its tools beside the interpreter.
     os.environ["PATH"] = str(Path(sys.executable).parent) + os.pathsep + os.environ.get("PATH", "")
-    args.build_dir = str(Path(args.build_dir or ROOT / "build" / ("android-arm64-pad" if args.pad else "android-arm64")).resolve())
-    # ON or OFF every time: a build directory reconfigured without --pad must not keep the pad.
-    args.cmake_args.append(f"-DOBL_ANDROID_PAD={'ON' if args.pad else 'OFF'}")
-    if args.pad and not args.out:
-        args.out = str(Path(args.build_dir) / "OpenBeach-pad.apk")
+    args.build_dir = str(Path(args.build_dir).resolve())
     sdk = sdk_root()
     ndk = Path(os.environ["ANDROID_NDK_HOME"]) if os.environ.get("ANDROID_NDK_HOME") else newest(sdk / "ndk")
     apk = build_apk(args, sdk, build_library(args, ndk))

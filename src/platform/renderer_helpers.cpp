@@ -6,6 +6,7 @@
 #include "game/game/game_accessors.h"
 #include "game/ui/fill_observer.h"
 #include "game/ui/renderer_types.h"
+#include "game/ui/resolutions.h"
 #include "core/rect.h"
 #include "platform/renderer_backbits.h"
 #include "platform/renderer_dirty.h"
@@ -48,7 +49,8 @@ void SetViewport(Renderer& r, const int* rect)
 }
 void SetGuiBarHeight(Renderer& r, int height)
 {
-    r.m_bottomTrim = height;
+    // Beside a centred panel (ui::SetCenteredBar) the map runs to the screen's bottom edge, under the panel too.
+    r.m_bottomTrim = ui::BarOffsetX(r.m_width) > 0 ? 0 : height;
 }
 
 void SetZoomLevel(Renderer& r, int level)

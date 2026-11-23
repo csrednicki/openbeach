@@ -4,6 +4,7 @@
 
 #include "game/game/game_accessors.h"
 #include "game/ui/renderer_types.h"
+#include "game/ui/screen_backdrop.h"
 #include "core/log.h"
 #include "core/pack_path.h"
 #include "core/image_scale.h"
@@ -85,8 +86,26 @@ void* Load(DecodeFunction decode, const char* path)
     return nullptr;
 }
 
+// A screen with a wide version (screen_backdrop.h, Android): that version's part under the 800x600 screen, as a 16-bit image.
+void* LoadWideScreen(const char* path)
+{
+    if (!screen_backdrop::g_wideScreen) return nullptr;
+    const std::filesystem::path pack = image::PackPath(path);
+    if (pack.parent_path() != "packs/base/images/screens") return nullptr;
+    std::vector<uint16_t> pixels;
+    const std::string key = pack.stem().string();
+    int pictureX = 0, pictureY = 0;
+    if (!screen_backdrop::g_wideScreen(key, game::GetRenderer()->m_rgb555 == 1, 800, 600, pixels, pictureX, pictureY)) return nullptr;
+    if (pictureX || pictureY) screen_backdrop::SetPictureShift(key, pictureX, pictureY);
+    auto* game = new GameImage;
+    Construct(game, 800, 600, 16, 0);
+    std::copy(pixels.begin(), pixels.end(), game->m_pixels16.begin());
+    return game;
+}
+
 void* __cdecl LoadTgaImage(const char* path)
 {
+    if (void* wide = LoadWideScreen(path)) return wide;
     return Load(&image::DecodeTga, path);
 }
 

@@ -26,6 +26,8 @@ std::string Kinds(const std::vector<TouchAction>& actions)
         case Kind::RightUp: line += "RU"; break;
         case Kind::Drag: line += "D"; break;
         case Kind::Wheel: line += "W"; break;
+        case Kind::Zoom: line += action.y > 0 ? "Z+" : "Z-"; break;
+        case Kind::Speed: line += action.y > 0 ? "S+" : "S-"; break;
         }
     }
     return line;
@@ -179,10 +181,81 @@ OBL_TEST_CASE("touch.two_finger_drag_is_the_wheel")
     OBL_CHECK(!touch.AnyFingerDown());
 }
 
+OBL_TEST_CASE("touch.two_finger_swipe_is_one_game_speed_step")
+{
+    TouchGestures touch;
+    // One finger above the other, both to the right: one step faster, however far they go.
+    touch.FingerDown(1, 300, 300, 0);
+    touch.FingerDown(2, 300, 420, 10);
+    touch.Take();
+    touch.FingerMove(1, 330, 300, 20);
+    touch.FingerMove(2, 330, 420, 30); // 30 to the right: sideways, not yet far enough
+    OBL_CHECK_EQ(Kinds(touch.Take()), "");
+    touch.FingerMove(1, 400, 302, 40);
+    touch.FingerMove(2, 400, 422, 50); // 100: the step
+    OBL_CHECK_EQ(Kinds(touch.Take()), "S+");
+    touch.FingerMove(1, 700, 302, 60);
+    touch.FingerMove(2, 700, 422, 70);
+    touch.FingerUp(1, 700, 302, 80);
+    touch.FingerUp(2, 700, 422, 90);
+    OBL_CHECK_EQ(Kinds(touch.Take()), ""); // no second step, no right click
+    // To the left: one step slower.
+    touch.FingerDown(1, 600, 300, 1000);
+    touch.FingerDown(2, 600, 420, 1010);
+    touch.FingerMove(1, 500, 300, 1020);
+    touch.FingerMove(2, 500, 420, 1030);
+    OBL_CHECK_EQ(Kinds(touch.Take()), "M S-");
+}
+
+OBL_TEST_CASE("touch.pinch_is_the_game_zoom")
+{
+    TouchGestures touch;
+    touch.FingerDown(1, 400, 300, 0);
+    touch.FingerDown(2, 600, 300, 10); // 200 apart
+    touch.Take();
+    touch.FingerMove(1, 380, 300, 20);
+    touch.FingerMove(2, 620, 300, 30); // 240: not yet a quarter wider
+    OBL_CHECK_EQ(Kinds(touch.Take()), "");
+    touch.FingerMove(2, 660, 300, 40); // 280: a step closer
+    OBL_CHECK_EQ(Kinds(touch.Take()), "Z+");
+    touch.FingerMove(1, 300, 300, 50); // wider still, then back in: the same pinch makes no other step
+    touch.FingerMove(1, 560, 300, 60);
+    OBL_CHECK_EQ(Kinds(touch.Take()), "");
+    touch.FingerUp(2, 660, 300, 70);
+    touch.FingerUp(1, 560, 300, 80);
+    OBL_CHECK_EQ(Kinds(touch.Take()), ""); // no click on the way out
+    // The next pinch is the next step: farther this time.
+    touch.FingerDown(1, 300, 300, 1000);
+    touch.FingerDown(2, 700, 300, 1010);
+    touch.FingerMove(1, 450, 300, 1020);
+    touch.FingerMove(2, 550, 300, 1030);
+    OBL_CHECK_EQ(Kinds(touch.Take()), "M Z-");
+}
+
+// With one finger still, the fingers' centre leaves the slop before the span has grown by a quarter: still a pinch, not a swipe
+// (a game speed step) or a scroll.
+OBL_TEST_CASE("touch.pinch_with_one_finger_still_is_the_game_zoom")
+{
+    TouchGestures touch;
+    touch.FingerDown(1, 400, 300, 0);
+    touch.FingerDown(2, 600, 300, 10); // 200 apart
+    touch.Take();
+    for (int i = 1; i <= 10; ++i) touch.FingerMove(2, 600.0f + 10.0f * static_cast<float>(i), 300, 10 + i); // sideways to 300 apart
+    OBL_CHECK_EQ(Kinds(touch.Take()), "Z+");
+    touch.FingerUp(2, 700, 300, 30);
+    touch.FingerUp(1, 400, 300, 40);
+    // Up and down, narrower: farther.
+    touch.FingerDown(1, 400, 200, 1000);
+    touch.FingerDown(2, 400, 500, 1010); // 300 apart
+    touch.Take();
+    for (int i = 1; i <= 10; ++i) touch.FingerMove(2, 400, 500.0f - 10.0f * static_cast<float>(i), 1010 + i); // to 200 apart
+    OBL_CHECK_EQ(Kinds(touch.Take()), "Z-");
+}
+
 OBL_TEST_CASE("touch.a_third_finger_or_a_second_during_a_drag_changes_nothing")
 {
     TouchGestures touch;
-    // Three fingers: nothing the game has.
+    // Three fingers: nothing the game has (some systems keep them for their own gestures).
     touch.FingerDown(1, 10, 10, 0);
     touch.FingerDown(2, 50, 10, 5);
     touch.FingerDown(3, 90, 10, 10);

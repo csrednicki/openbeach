@@ -7,6 +7,7 @@
 #include "game/ui/gui_widget_virtual.h"
 #include "game/ui/gui_data.h"
 #include "game/ui/gui_containers.h"
+#include "game/ui/own_controls.h"
 
 #include "game/game/game_accessors.h"
 #include "game/game/startup_tables.h"
@@ -335,6 +336,12 @@ void GuiDefine::SetVisible(uint32_t visible)
 {
     gui::g_counter.Count();
     GameEnv env;
+    if (own_controls::ConditionalDefine(m_name)) {
+        // The request is kept (its own flag) and the children get it only while the condition holds; Update follows the condition.
+        SetVisibleBase(visible);
+        m_shown = static_cast<uint8_t>(m_visible && own_controls::DefineShown(m_name));
+        visible = m_shown;
+    }
     gui_containers::DefineSetVisible(*this, visible, env);
 }
 
@@ -348,17 +355,20 @@ void GuiDefine::AddChild(GuiWidget* child)
 void GuiDefine::Draw()
 {
     gui::g_counter.Count();
+    if (!m_shown) return;
     GameEnv env;
     gui_containers::DefineDraw(*this, env);
 }
 
 void GuiDefine::DrawOverlay()
 {
+    if (!m_shown) return;
     GuiContainer::ChildrenDrawOverlay();
 }
 
 bool GuiDefine::MouseLeft(int x, int y, int state)
 {
+    if (!m_shown) return false; // hidden controls take no clicks (a slider's hit test does not ask for its visibility)
     return GuiContainer::ChildrenMouseLeft(x, y, state);
 }
 
@@ -374,6 +384,14 @@ void GuiDefine::Update(float dt)
 {
     gui::g_counter.Count();
     GameEnv env;
+    if (own_controls::ConditionalDefine(m_name)) {
+        const auto shown = static_cast<uint8_t>(m_visible && own_controls::DefineShown(m_name));
+        if (shown != m_shown) { // the condition changed while the window is open: the window is redrawn without (or with) them
+            m_shown = shown;
+            gui_containers::DefineSetVisible(*this, shown, env);
+            env.InvalidateAllDialogs();
+        }
+    }
     gui_containers::DefineUpdate(*this, std::bit_cast<uint32_t>(dt), env);
 }
 

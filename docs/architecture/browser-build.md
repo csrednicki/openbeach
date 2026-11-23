@@ -175,8 +175,12 @@ and keeps the log in OPFS for a bug report: [browser-failures.md](browser-failur
   (`SDL_HINT_TOUCH_MOUSE_EVENTS`) and `input.cpp` feeds SDL's finger events to `TouchGestures` (`touch_gestures.h`, no SDL,
   unit tests `touch.*`), which turns them into the mouse's records: a tap is a left click, a drag with one finger the camera
   drag (the right button and the motion, scaled from client to game pixels so the map follows the finger), a press and
-  hold keeps the left button down until the finger lifts, a tap with two fingers is a right click and a drag with two
-  fingers the wheel. The cursor is where the finger is and leaves once it is up and the game has read it, so a tap near the
+  hold keeps the left button down until the finger lifts, a tap with two fingers is a right click, a drag with two
+  fingers the wheel, a pinch (the fingers' distance changing by a quarter, well beyond their centre's motion) one step of the
+  game's zoom (PageUp, PageDown; the next step takes the next pinch) and a two-finger swipe to the right or left one game speed step
+  faster or slower (`SetGameSpeed`, within 0 to 2; a drag up or down stays the wheel). A first
+  finger that lands on a slider (`gui_touch_snap::SliderNear`) holds the left button at once (`TouchAim::Paint`), so its
+  drag moves the slider, which keeps it until the finger lifts. The cursor is where the finger is and leaves once it is up and the game has read it, so a tap near the
   edge does not scroll the map. The canvas has `touch-action: none`.
   While the GUI places things (`GuiManager::m_mode` 1 and 5, building and scenery; `CurrentTouchAim`) one finger is the
   cursor instead, because the game places on the press and a tap would place blindly: the finger moves the preview and

@@ -4,6 +4,8 @@
 
 #include "platform/touch_pad.h"
 
+#include <cmath>
+
 using namespace obl::platform;
 
 namespace {
@@ -72,11 +74,63 @@ OBL_TEST_CASE("touch_pad.two_fingers_are_right_click")
     TouchPad pad = MakePad();
     pad.FingerDown(1, 1000, 500, 0);
     pad.FingerDown(2, 1200, 500, 20);
-    pad.FingerMove(1, 1300, 600); // two fingers move no cursor
+    pad.FingerMove(1, 1030, 540); // two fingers move no cursor (a short way: a long one sideways is a speed step)
     pad.FingerUp(2, 1200, 500, 80);
-    pad.FingerUp(1, 1300, 600, 90);
+    pad.FingerUp(1, 1030, 540, 90);
     const TouchPad::Output out = pad.Take();
     OBL_CHECK(out.twoFingerTaps == 1 && out.taps == 0 && out.dx == 0);
+}
+
+OBL_TEST_CASE("touch_pad.two_finger_swipe_is_a_speed_step_and_no_right_click")
+{
+    TouchPad pad = MakePad();
+    pad.FingerDown(1, 1000, 400, 0); // one above the other
+    pad.FingerDown(2, 1000, 550, 20);
+    OBL_CHECK(pad.Take().twoFingerTaps == 0); // two down: nothing yet, they may swipe
+    pad.FingerMove(1, 1050, 400);
+    pad.FingerMove(2, 1050, 550); // 50 to the right: not yet
+    OBL_CHECK(pad.Take().speedSteps == 0);
+    pad.FingerMove(1, 1100, 405);
+    pad.FingerMove(2, 1100, 555); // 100: one step faster
+    pad.FingerMove(1, 1400, 405);
+    pad.FingerMove(2, 1400, 555); // and no more in the same touch
+    pad.FingerUp(1, 1400, 405, 80);
+    pad.FingerUp(2, 1400, 555, 90);
+    TouchPad::Output out = pad.Take();
+    OBL_CHECK(out.speedSteps == 1 && out.twoFingerTaps == 0 && out.taps == 0 && out.dx == 0);
+    pad.FingerDown(3, 1000, 400, 1000); // to the left: slower
+    pad.FingerDown(4, 1000, 550, 1010);
+    pad.FingerMove(3, 880, 400);
+    pad.FingerMove(4, 880, 550);
+    pad.FingerUp(3, 880, 400, 1080);
+    pad.FingerUp(4, 880, 550, 1090);
+    out = pad.Take();
+    OBL_CHECK(out.speedSteps == -1 && out.twoFingerTaps == 0);
+}
+
+OBL_TEST_CASE("touch_pad.two_fingers_drag_the_zoom")
+{
+    TouchPad pad = MakePad();
+    pad.SetPicture(480, 0, 1440, 1080);
+    pad.ToggleMagnifier();
+    pad.FingerDown(1, 1300, 500, 0);
+    pad.FingerDown(2, 1500, 500, 10);
+    pad.FingerMove(1, 1100, 560); // the view follows, half as far on the picture
+    float x = 0, y = 0;
+    OBL_CHECK(pad.Zoom(x, y) && x == 1300 && y == 510);
+    pad.CentreZoom(480, 0); // on a window in the corner: the view stays on the picture
+    OBL_CHECK(pad.Zoom(x, y) && x == 840 && y == 270);
+    TwoFingerPan pan;
+    float dx = 0, dy = 0;
+    pan.Down(1, 100, 100);
+    pan.Move(1, 140, 100, dx, dy);
+    OBL_CHECK(dx == 0 && dy == 0); // one finger: no pan
+    pan.Down(2, 300, 100);
+    pan.Move(2, 300, 160, dx, dy);
+    OBL_CHECK(dx == 0 && dy == 30); // the centre of two moved half the finger's motion
+    pan.Up(2);
+    pan.Move(1, 200, 100, dx, dy);
+    OBL_CHECK(dx == 0 && dy == 0);
 }
 
 OBL_TEST_CASE("touch_pad.dpad_and_cursor_together")
@@ -123,4 +177,57 @@ OBL_TEST_CASE("touch_pad.magnifier_zooms_and_drags")
     pad.FingerDown(7, 1500, 500, 500);
     pad.FingerUp(7, 1500, 500, 550);
     OBL_CHECK(!pad.Magnifier() && pad.Take().taps == 1);
+}
+
+OBL_TEST_CASE("touch_pad.gestures_zoom_through_the_corner_button")
+{
+    TouchPad pad = MakePad();
+    const DpadCircle placed = DpadPlacement(2400, 1080);
+    const DpadCircle corner = CornerButton(placed);
+    pad.SetButton(corner);
+    pad.SetPicture(480, 0, 1440, 1080);
+    // The corner button lies inside the D-pad's square, in its lower left.
+    OBL_CHECK(corner.x < placed.x && corner.y > placed.y && corner.x - corner.radius >= placed.x - placed.radius - 0.01f);
+    OBL_CHECK(pad.OnButton(corner.x, corner.y) && !pad.OnButton(placed.x + placed.radius, placed.y));
+    float x = 1300, y = 700;
+    pad.ToPicture(x, y);
+    OBL_CHECK(x == 1300 && y == 700); // no zoom: unchanged
+    pad.ToggleMagnifier();
+    x = 1200, y = 540; // the screen's centre shows the picture's centre
+    pad.ToPicture(x, y);
+    OBL_CHECK(x == 1200 && y == 540);
+    x = 1400, y = 740; // 200 pixels off on the zoomed screen are 100 on the picture
+    pad.ToPicture(x, y);
+    OBL_CHECK(x == 1300 && y == 640);
+}
+
+OBL_TEST_CASE("touch_pad.magnifier_off_in_the_options")
+{
+    TouchPad pad = MakePad();
+    pad.SetPicture(480, 0, 1440, 1080);
+    const DpadCircle button = MagnifierButton(DpadPlacement(2400, 1080));
+    pad.FingerDown(1, button.x, button.y, 0);
+    pad.FingerUp(1, button.x, button.y, 50);
+    float x = 0, y = 0;
+    OBL_CHECK(pad.Zoom(x, y));
+    pad.SetMagnifierAllowed(false); // turned off while zoomed: the zoom ends
+    OBL_CHECK(!pad.Zoom(x, y) && !pad.MagnifierAllowed());
+    pad.FingerDown(2, button.x, button.y, 100); // the button's place is a touchpad finger now: a tap clicks
+    pad.FingerUp(2, button.x, button.y, 150);
+    OBL_CHECK(!pad.Magnifier() && pad.Take().taps == 1);
+}
+
+OBL_TEST_CASE("touch_pad.dpad_stays_off_the_bottom_panel")
+{
+    const DpadCircle corner = DpadPlacement(2400, 1080);
+    // A 4:3 picture leaves a 480-pixel bar on the left: the pad stays in its corner.
+    const DpadCircle beside = DpadPlacement(2400, 1080, 480.0f, 1080.0f - 169.2f);
+    OBL_CHECK(beside.x == corner.x && beside.y == corner.y);
+    // A picture as wide as the screen: the pad stands on the panel's top edge (panel 94 game pixels at 1.8x = 169.2).
+    const float barTop = 1080.0f - 169.2f;
+    const DpadCircle above = DpadPlacement(2400, 1080, 0.0f, barTop);
+    OBL_CHECK(above.x == corner.x && above.radius == corner.radius);
+    OBL_CHECK(std::fabs(above.y + above.radius + 0.25f * above.radius - barTop) < 0.01f);
+    // The magnifier's button goes with it.
+    OBL_CHECK(MagnifierButton(above).y < above.y - above.radius);
 }
