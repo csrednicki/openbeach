@@ -598,9 +598,9 @@ void ApplyTouchPad()
         PushEvent(input_state::kRecordLeft, 0x80);
         PushEvent(input_state::kRecordLeft, 0);
     }
-    // Two fingers are the right button, or Space while a building or scenery is being placed (the handheld's X): it turns it.
+    // A held finger is the right button, or Space while a building or scenery is being placed (the handheld's X): it turns it.
     if (out.speedSteps) StepGameSpeed(out.speedSteps);
-    for (int i = 0; i < out.twoFingerTaps; ++i) {
+    for (int i = 0; i < out.holds; ++i) {
         if (CurrentTouchAim() == TouchAim::Confirm) {
             TapKey(SDL_SCANCODE_SPACE);
         } else {
@@ -732,6 +732,7 @@ void ReadSdlTouchEvents()
     }
     if (!kTouchGestures) return;
     if (pad) {
+        g_touchPad.Tick(static_cast<uint32_t>(SDL_GetTicks()));
         ApplyTouchPad();
         return;
     }

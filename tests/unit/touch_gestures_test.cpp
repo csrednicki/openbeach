@@ -90,7 +90,7 @@ OBL_TEST_CASE("touch.one_finger_drag_is_the_camera_drag")
     OBL_CHECK(!touch.AnyFingerDown());
 }
 
-OBL_TEST_CASE("touch.a_long_press_holds_the_left_button")
+OBL_TEST_CASE("touch.a_long_press_is_a_right_click")
 {
     TouchGestures touch;
     touch.FingerDown(1, 50, 60, 1000);
@@ -99,22 +99,15 @@ OBL_TEST_CASE("touch.a_long_press_holds_the_left_button")
     OBL_CHECK_EQ(Kinds(touch.Take()), "");
     touch.Tick(1000 + TouchGestures::kHoldMs);
     auto actions = touch.Take();
-    OBL_CHECK_EQ(Kinds(actions), "M LD");
-    OBL_CHECK_EQ(actions[1].x, 50.0f);
-    // The held finger moves the cursor, however far, and is not a camera drag.
+    OBL_CHECK_EQ(Kinds(actions), "M RD RU");
+    OBL_CHECK_EQ(actions[1].x, 50.0f); // where the finger went down
+    OBL_CHECK_EQ(actions[1].y, 60.0f);
+    // The rest of the touch is nothing: no camera drag, no click on the lift.
     touch.FingerMove(1, 200, 90, 1600);
-    actions = touch.Take();
-    OBL_CHECK_EQ(Kinds(actions), "M");
-    OBL_CHECK_EQ(actions[0].x, 200.0f);
-    OBL_CHECK(!touch.Panning());
     touch.FingerUp(1, 210, 95, 1700);
-    actions = touch.Take();
-    OBL_CHECK_EQ(Kinds(actions), "M LU"); // up where the finger left
-    OBL_CHECK_EQ(actions[1].x, 210.0f);
-    OBL_CHECK_EQ(actions[1].y, 95.0f);
-    // Time passing later does nothing.
     touch.Tick(5000);
     OBL_CHECK_EQ(Kinds(touch.Take()), "");
+    OBL_CHECK(!touch.Panning());
 }
 
 OBL_TEST_CASE("touch.a_moved_finger_is_not_a_hold")
@@ -127,17 +120,14 @@ OBL_TEST_CASE("touch.a_moved_finger_is_not_a_hold")
     OBL_CHECK_EQ(Kinds(touch.Take()), "");
 }
 
-OBL_TEST_CASE("touch.two_finger_tap_is_a_right_click")
+OBL_TEST_CASE("touch.two_finger_tap_is_no_click")
 {
     TouchGestures touch;
     touch.FingerDown(1, 100, 100, 0);
     touch.FingerDown(2, 180, 120, 30);
     touch.Take();
     touch.FingerUp(2, 180, 120, 120);
-    auto actions = touch.Take();
-    OBL_CHECK_EQ(Kinds(actions), "M RD RU");
-    OBL_CHECK_EQ(actions[0].x, 100.0f); // at the first finger
-    OBL_CHECK_EQ(actions[0].y, 100.0f);
+    OBL_CHECK_EQ(Kinds(touch.Take()), "");
     // The finger still down does nothing more, and nothing is held.
     touch.FingerMove(1, 300, 300, 200);
     touch.FingerUp(1, 300, 300, 260);
@@ -292,8 +282,8 @@ OBL_TEST_CASE("touch.cancel_lets_go_of_what_is_held")
     touch.Cancel();
     OBL_CHECK_EQ(Kinds(touch.Take()), "RU");
     OBL_CHECK(!touch.AnyFingerDown());
+    touch.SetAim(TouchAim::Paint); // the left button held, as on a slider
     touch.FingerDown(2, 5, 5, 1000);
-    touch.Tick(2000);
     touch.Take();
     touch.Cancel();
     OBL_CHECK_EQ(Kinds(touch.Take()), "LU");
@@ -341,12 +331,12 @@ OBL_TEST_CASE("touch.placing_a_second_finger_turns_instead_of_pressing")
     touch.FingerUp(2, 180, 200, 100);
     touch.FingerUp(1, 100, 200, 110);
     OBL_CHECK_EQ(Kinds(touch.Take()), "");
-    // The first finger lifting first is the right click as usual (the placing modes do not read it); nothing is pressed on the left.
+    // The first finger lifting first presses nothing.
     touch.FingerDown(3, 10, 10, 1000);
     touch.FingerDown(4, 60, 10, 1020);
     touch.FingerUp(3, 10, 10, 1060);
     touch.FingerUp(4, 60, 10, 1080);
-    OBL_CHECK_EQ(Kinds(touch.Take()), "M M RD RU");
+    OBL_CHECK_EQ(Kinds(touch.Take()), "M");
 }
 
 OBL_TEST_CASE("touch.placing_a_second_finger_tap_turns_and_the_first_finger_places")

@@ -1,11 +1,12 @@
 #pragma once
 
 // The handheld's controls on a touch screen (Android with the Controls options' touch controls off, docs/build/android.md), without
-// SDL calls or game state: a virtual D-pad in the lower left corner holds the arrow keys, which scroll the map, as the handheld's D-pad does.
-// Every other finger works a touchpad: its motion moves the cursor, a tap is a left click and a touch of a second finger a right
-// click (the backend turns it into Space, which turns the building, while one is being placed). A button above the D-pad turns
-// the magnifier on and off (unless the Controls options turn the button off): while it is on, the presenter shows the picture twice the size, from its centre, and a finger drags
-// the zoomed view instead of working the cursor. Positions are client pixels.
+// SDL calls or game state: a virtual D-pad in the lower left corner holds the arrow keys, which scroll the map, as the handheld's
+// D-pad does. Every other finger works a touchpad: its motion moves the cursor, a tap is a left click, a finger held still a right
+// click (the backend turns it into Space, which turns the building, while one is being placed) and a two-finger swipe a game
+// speed step. A button above the D-pad turns the magnifier on and off (unless the Controls options turn the button off): while it
+// is on, the presenter shows the picture twice the size, from its centre, and a finger drags the zoomed view instead of working
+// the cursor. Positions are client pixels.
 
 #include <algorithm>
 #include <cmath>
@@ -113,12 +114,13 @@ public:
     struct Output {
         double dx = 0, dy = 0; // cursor motion
         int taps = 0; // left clicks
-        int twoFingerTaps = 0; // right clicks (Space while placing)
+        int holds = 0; // right clicks: a finger held still kHoldMs (Space while placing)
         int speedSteps = 0; // two-finger swipes: 1 faster (to the right), -1 slower
     };
 
     static constexpr float kSlop = 10.0f; // density-independent pixels a tap may wander
     static constexpr uint32_t kTapMs = 300;
+    static constexpr uint32_t kHoldMs = 450;
     static constexpr double kGain = 1.5; // cursor pixels per finger pixel at the default cursor speed
     static constexpr float kSwipe = 80.0f; // density-independent pixels two fingers go sideways for a speed step
 
@@ -168,12 +170,11 @@ public:
             m_startX = m_lastX = x;
             m_startY = m_lastY = y;
             m_downMs = ms;
-            m_moving = m_twoFingers = false;
+            m_moving = m_twoFingers = m_held = false;
             m_pendingX = m_pendingY = 0;
         } else {
             m_twoFingers = true; // until every finger is up: no motion and no tap
         }
-        m_mostPointers = std::max(m_mostPointers, m_pointers.size());
         m_spots.push_back({id, x, y, x, y});
         if (m_pointers.size() == 2)
             for (Spot& spot : m_spots) { // the swipe counts from where both are
@@ -231,11 +232,7 @@ public:
         m_pointers.erase(pointer);
         std::erase_if(m_spots, [id](const Spot& spot) { return spot.id == id; });
         if (id == m_primary && !m_magnifier && !m_twoFingers && !m_moving && ms - m_downMs <= kTapMs) ++m_out.taps;
-        // Fingers count once all are up, so that a third one does not make a right click of the first two on its way.
-        if (!m_pointers.empty()) return;
-        if (m_mostPointers == 2 && !m_magnifier && !m_swiped) ++m_out.twoFingerTaps;
-        m_mostPointers = 0;
-        m_swiped = false;
+        if (m_pointers.empty()) m_swiped = false;
     }
 
     // The system took the fingers (a gesture of its own, the app in the background).
@@ -244,9 +241,17 @@ public:
         m_dpad.clear();
         m_pointers.clear();
         m_primary = -1;
-        m_mostPointers = 0;
         m_spots.clear();
         m_swiped = false;
+    }
+
+    // Time passing with the fingers where they are: one finger held still kHoldMs is a right click, once a touch.
+    void Tick(uint32_t ms)
+    {
+        if (m_pointers.size() != 1 || m_pointers[0] != m_primary || m_twoFingers || m_moving || m_held || m_magnifier) return;
+        if (ms - m_downMs < kHoldMs) return;
+        ++m_out.holds;
+        m_held = true;
     }
 
     bool Magnifier() const { return m_magnifier; }
@@ -257,7 +262,10 @@ public:
         m_magnifier = !m_magnifier;
         m_zoomX = m_picX + m_picW / 2;
         m_zoomY = m_picY + m_picH / 2;
-        m_pointers.clear(); // a touchpad finger that is down stops working the cursor
+        // A touchpad finger that is down stops working the cursor, and its swipe ends: its lift is not looked for.
+        m_pointers.clear();
+        m_spots.clear();
+        m_swiped = false;
         m_primary = -1;
     }
 
@@ -340,14 +348,13 @@ private:
     float m_startX = 0, m_startY = 0, m_lastX = 0, m_lastY = 0;
     double m_pendingX = 0, m_pendingY = 0;
     uint32_t m_downMs = 0;
-    bool m_moving = false, m_twoFingers = false;
-    size_t m_mostPointers = 0; // touchpad fingers down at once since the last time all were up
+    bool m_moving = false, m_twoFingers = false, m_held = false;
     struct Spot {
         int64_t id;
         float x, y, startX, startY;
     };
     std::vector<Spot> m_spots; // the touchpad fingers' positions, for the two-finger swipe
-    bool m_swiped = false; // this touch made its speed step (and is no right click)
+    bool m_swiped = false; // this touch made its speed step
     bool m_magnifier = false, m_magnifierAllowed = true;
     float m_zoomX = 0, m_zoomY = 0;
     float m_picX = 0, m_picY = 0, m_picW = 0, m_picH = 0;

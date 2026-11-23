@@ -69,24 +69,36 @@ OBL_TEST_CASE("touch_pad.drag_moves_cursor")
     OBL_CHECK(out.taps == 0); // a moved finger is no tap
 }
 
-OBL_TEST_CASE("touch_pad.two_fingers_are_right_click")
+OBL_TEST_CASE("touch_pad.a_still_hold_is_right_click")
 {
     TouchPad pad = MakePad();
-    pad.FingerDown(1, 1000, 500, 0);
-    pad.FingerDown(2, 1200, 500, 20);
-    pad.FingerMove(1, 1030, 540); // two fingers move no cursor (a short way: a long one sideways is a speed step)
-    pad.FingerUp(2, 1200, 500, 80);
-    pad.FingerUp(1, 1030, 540, 90);
-    const TouchPad::Output out = pad.Take();
-    OBL_CHECK(out.twoFingerTaps == 1 && out.taps == 0 && out.dx == 0);
+    pad.FingerDown(1, 1000, 500, 1000);
+    pad.Tick(1000 + TouchPad::kHoldMs - 1);
+    OBL_CHECK(pad.Take().holds == 0);
+    pad.Tick(1000 + TouchPad::kHoldMs);
+    pad.Tick(3000); // once a touch
+    pad.FingerUp(1, 1000, 500, 3000);
+    TouchPad::Output out = pad.Take();
+    OBL_CHECK(out.holds == 1 && out.taps == 0 && out.dx == 0);
+    pad.FingerDown(2, 1000, 500, 4000); // moved first: no hold
+    pad.FingerMove(2, 1100, 500);
+    pad.Tick(5000);
+    pad.FingerUp(2, 1100, 500, 5000);
+    OBL_CHECK(pad.Take().holds == 0);
+    pad.FingerDown(3, 1000, 500, 6000); // two fingers tapped: no click at all
+    pad.FingerDown(4, 1200, 500, 6020);
+    pad.FingerUp(4, 1200, 500, 6080);
+    pad.FingerUp(3, 1000, 500, 6090);
+    out = pad.Take();
+    OBL_CHECK(out.holds == 0 && out.taps == 0);
 }
 
-OBL_TEST_CASE("touch_pad.two_finger_swipe_is_a_speed_step_and_no_right_click")
+OBL_TEST_CASE("touch_pad.two_finger_swipe_is_a_speed_step")
 {
     TouchPad pad = MakePad();
     pad.FingerDown(1, 1000, 400, 0); // one above the other
     pad.FingerDown(2, 1000, 550, 20);
-    OBL_CHECK(pad.Take().twoFingerTaps == 0); // two down: nothing yet, they may swipe
+    OBL_CHECK(pad.Take().holds == 0); // two down: nothing yet, they may swipe
     pad.FingerMove(1, 1050, 400);
     pad.FingerMove(2, 1050, 550); // 50 to the right: not yet
     OBL_CHECK(pad.Take().speedSteps == 0);
@@ -97,7 +109,7 @@ OBL_TEST_CASE("touch_pad.two_finger_swipe_is_a_speed_step_and_no_right_click")
     pad.FingerUp(1, 1400, 405, 80);
     pad.FingerUp(2, 1400, 555, 90);
     TouchPad::Output out = pad.Take();
-    OBL_CHECK(out.speedSteps == 1 && out.twoFingerTaps == 0 && out.taps == 0 && out.dx == 0);
+    OBL_CHECK(out.speedSteps == 1 && out.holds == 0 && out.taps == 0 && out.dx == 0);
     pad.FingerDown(3, 1000, 400, 1000); // to the left: slower
     pad.FingerDown(4, 1000, 550, 1010);
     pad.FingerMove(3, 880, 400);
@@ -105,7 +117,7 @@ OBL_TEST_CASE("touch_pad.two_finger_swipe_is_a_speed_step_and_no_right_click")
     pad.FingerUp(3, 880, 400, 1080);
     pad.FingerUp(4, 880, 550, 1090);
     out = pad.Take();
-    OBL_CHECK(out.speedSteps == -1 && out.twoFingerTaps == 0);
+    OBL_CHECK(out.speedSteps == -1 && out.holds == 0);
 }
 
 OBL_TEST_CASE("touch_pad.two_fingers_drag_the_zoom")
@@ -142,7 +154,28 @@ OBL_TEST_CASE("touch_pad.dpad_and_cursor_together")
     pad.FingerUp(2, 1500, 500, 60);
     const TouchPad::Output out = pad.Take();
     OBL_CHECK(pad.Arrows() == kDpadUp);
-    OBL_CHECK(out.taps == 1 && out.twoFingerTaps == 0);
+    OBL_CHECK(out.taps == 1 && out.holds == 0);
+}
+
+// A touchpad finger down while the magnifier's button is touched leaves the swipe's fingers, so its lift is not waited for and the
+// next two-finger swipe still makes its speed step.
+OBL_TEST_CASE("touch_pad.the_magnifier_button_ends_the_fingers_on_the_touchpad")
+{
+    TouchPad pad = MakePad();
+    pad.SetPicture(480, 0, 1440, 1080);
+    const DpadCircle button = MagnifierButton(DpadPlacement(2400, 1080));
+    pad.FingerDown(1, 1000, 400, 0); // on the touchpad
+    pad.FingerDown(2, button.x, button.y, 10); // the magnifier on, and off again
+    pad.FingerUp(2, button.x, button.y, 20);
+    pad.FingerDown(3, button.x, button.y, 30);
+    pad.FingerUp(3, button.x, button.y, 40);
+    pad.FingerUp(1, 1000, 400, 50);
+    pad.Take();
+    pad.FingerDown(4, 1000, 400, 1000);
+    pad.FingerDown(5, 1000, 550, 1010);
+    pad.FingerMove(4, 1100, 400);
+    pad.FingerMove(5, 1100, 550);
+    OBL_CHECK(!pad.Magnifier() && pad.Take().speedSteps == 1);
 }
 
 OBL_TEST_CASE("touch_pad.magnifier_zooms_and_drags")
@@ -170,7 +203,7 @@ OBL_TEST_CASE("touch_pad.magnifier_zooms_and_drags")
     pad.FingerUp(5, 1500, 500, 330);
     pad.FingerUp(4, 1000, 500, 340);
     TouchPad::Output out = pad.Take();
-    OBL_CHECK(out.taps == 0 && out.twoFingerTaps == 0 && out.dx == 0 && out.dy == 0);
+    OBL_CHECK(out.taps == 0 && out.holds == 0 && out.dx == 0 && out.dy == 0);
     pad.FingerDown(6, button.x, button.y, 400); // off: the zoom ends and the touchpad is back
     pad.FingerUp(6, button.x, button.y, 410);
     OBL_CHECK(!pad.Zoom(x, y));

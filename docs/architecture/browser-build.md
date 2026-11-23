@@ -174,8 +174,8 @@ and keeps the log in OPFS for a bug report: [browser-failures.md](browser-failur
 - **Touch.** The game only knows a mouse, so in the browser build (`kTouchGestures`) SDL's touch-to-mouse events are off
   (`SDL_HINT_TOUCH_MOUSE_EVENTS`) and `input.cpp` feeds SDL's finger events to `TouchGestures` (`touch_gestures.h`, no SDL,
   unit tests `touch.*`), which turns them into the mouse's records: a tap is a left click, a drag with one finger the camera
-  drag (the right button and the motion, scaled from client to game pixels so the map follows the finger), a press and
-  hold keeps the left button down until the finger lifts, a tap with two fingers is a right click, a drag with two
+  drag (the right button and the motion, scaled from client to game pixels so the map follows the finger), a finger
+  held still for `kHoldMs` is a right click where it went down (a finger on a slider holds the left button instead), a drag with two
   fingers the wheel, a pinch (the fingers' distance changing by a quarter, well beyond their centre's motion) one step of the
   game's zoom (PageUp, PageDown; the next step takes the next pinch) and a two-finger swipe to the right or left one game speed step
   faster or slower (`SetGameSpeed`, within 0 to 2; a drag up or down stays the wheel). A first
