@@ -156,6 +156,26 @@ OBL_TEST_CASE("ini: files, missing files and numbers")
     }
 }
 
+OBL_TEST_CASE("ini: a whole file replaces the old one in one step")
+{
+    TempIni file;
+    file.Put("[A]\r\nx=1\r\n");
+    std::filesystem::path written;
+    const bool replaced = ini::WriteWhole(file.path, [&](const std::filesystem::path& temporary) {
+        written = temporary;
+        OBL_CHECK(ini::WriteString(temporary, "A", "x", "2"));
+        OBL_CHECK(file.Get() == "[A]\r\nx=1\r\n"); // a process that ends here leaves the old file whole
+    });
+    OBL_CHECK(replaced);
+    OBL_CHECK(file.Get() == "[A]\r\nx=2\r\n");
+    std::error_code ec;
+    OBL_CHECK(!std::filesystem::exists(written, ec));
+    // What an ended save left half written does not reach the next one.
+    std::ofstream(written, std::ios::binary) << "[Stale]\r\ny=9\r\n";
+    OBL_CHECK(ini::WriteWhole(file.path, [](const std::filesystem::path& temporary) { ini::WriteString(temporary, "A", "x", "3"); }));
+    OBL_CHECK(file.Get() == "[A]\r\nx=3\r\n");
+}
+
 #ifdef _WIN32
 OBL_TEST_CASE("ini: the same cases through the Windows profile API")
 {

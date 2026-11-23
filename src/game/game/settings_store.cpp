@@ -7,6 +7,7 @@
 #include "core/os.h"
 
 #include <cstdio>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -46,9 +47,9 @@ void LoadSound(Settings& s)
     s.m_playListPresent = 1;
     s.m_playList = std::move(values.tracks);
 }
-void SaveSound(const Settings& s)
+void SaveSound(const Settings& s, const char* path)
 {
-    IniEnv env{s.m_iniPath.c_str()};
+    IniEnv env{path};
     settings::SaveSound(env, CaptureSound(s));
 }
 settings::VideoValues CaptureVideo(const Settings& s)
@@ -80,9 +81,9 @@ void LoadVideo(Settings& s)
     s.m_barAutoHide = values.barAutoHide;
     s.m_barHideSeconds = values.barHideSeconds;
 }
-void SaveVideo(const Settings& s)
+void SaveVideo(const Settings& s, const char* path)
 {
-    IniEnv env{s.m_iniPath.c_str()};
+    IniEnv env{path};
     settings::SaveVideo(env, CaptureVideo(s));
 }
 
@@ -110,31 +111,32 @@ void RebaseDialogPositions(Settings& s)
     if (s.m_resolutionWidth <= 0 || s.m_resolutionHeight <= 0) return;
     settings::RebaseDialogs(s.m_dialogPositions, g_savedScreenWidth, g_savedScreenHeight, s.m_resolutionWidth, s.m_resolutionHeight);
 }
-void SaveDialogs(Settings& s)
+void SaveDialogs(Settings& s, const char* path)
 {
     RebaseDialogPositions(s);
-    IniEnv env{s.m_iniPath.c_str()};
+    IniEnv env{path};
     settings::SaveDialogs(env, s.m_dialogPositions);
     settings::SaveDialogScreen(env, s.m_resolutionWidth, s.m_resolutionHeight);
 }
 
 struct MainSections {
     Settings& s;
+    const char* path; // the file a save writes: a temporary one that then replaces the INI (settings_store::Save)
     void LoadSound() { game::LoadSound(s); }
     void LoadDialogs() { game::LoadDialogs(s); }
     void LoadVideo() { game::LoadVideo(s); }
     void Touch()
     {
-        if (FILE* file = os::OpenFile(s.m_iniPath.c_str(), "wt")) std::fclose(file);
+        if (FILE* file = os::OpenFile(path, "wt")) std::fclose(file);
     }
-    void SaveSound() { game::SaveSound(s); }
-    void SaveDialogs() { game::SaveDialogs(s); }
-    void SaveVideo() { game::SaveVideo(s); }
+    void SaveSound() { game::SaveSound(s, path); }
+    void SaveDialogs() { game::SaveDialogs(s, path); }
+    void SaveVideo() { game::SaveVideo(s, path); }
 };
 bool Load(Settings& s)
 {
     IniEnv env{s.m_iniPath.c_str()};
-    MainSections sections{s};
+    MainSections sections{s, s.m_iniPath.c_str()};
     settings::MainValues values{s.m_language, s.m_systemCursor};
     const bool loaded = settings::LoadMain(env, values, sections);
     s.m_language = values.language;
@@ -172,9 +174,15 @@ void Save(Settings& s)
         return;
     }
     OBL_LOG("Settings: save %s Language.Language=%d", s.m_iniPath.c_str(), s.m_language);
-    IniEnv env{s.m_iniPath.c_str()};
-    MainSections sections{s};
-    settings::SaveMain(env, settings::MainValues{s.m_language, s.m_systemCursor}, sections);
+    // Bug fix: the save truncates the file and writes it key by key, so Android ending the app during it (a swipe from the recent
+    // apps) left an INI without [Video], and the next start played in 800x600 again. The whole file now replaces the old one.
+    const bool replaced = ini::WriteWhole(s.m_iniPath, [&s](const std::filesystem::path& temporary) {
+        const std::string path = temporary.string();
+        IniEnv env{path.c_str()};
+        MainSections sections{s, path.c_str()};
+        settings::SaveMain(env, settings::MainValues{s.m_language, s.m_systemCursor}, sections);
+    });
+    if (!replaced) OBL_LOG("Settings: cannot replace %s, the previous settings stay", s.m_iniPath.c_str());
 }
 void ClearDialogPositions(Settings& s)
 {

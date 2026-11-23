@@ -195,4 +195,15 @@ bool WriteString(const std::filesystem::path& path, std::string_view section, st
     return static_cast<bool>(out);
 }
 
+bool WriteWhole(const std::filesystem::path& path, const std::function<void(const std::filesystem::path& temporary)>& write)
+{
+    std::filesystem::path temporary = path;
+    temporary += ".tmp";
+    std::error_code error;
+    std::filesystem::remove(temporary, error); // what an ended process left half written
+    write(temporary);
+    std::filesystem::rename(temporary, path, error); // replaces the old file; atomic on POSIX
+    return !error;
+}
+
 } // namespace obl::ini

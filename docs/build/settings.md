@@ -27,6 +27,9 @@ language, and selecting `OBL_PACK=l0` does not change the requested setting. The
 `Language.Language=0` through `@gameini`; `autotest.ps1` restores its saved INI in `finally`, but terminating the
 harness can leave the temporary value behind.
 Each native settings save now logs its INI path and `Language.Language` value for future writer attribution.
+A full save writes `BeachLife.ini.tmp` and then renames it over `BeachLife.ini` (`ini::WriteWhole`): the save truncates its file
+and writes it key by key, so a process ended during it (Android ends a swiped-away app at once) used to leave an INI without its
+later sections, and the next start read the defaults (800x600 among them).
 
 Both script harnesses set language 5 before each base test. Direct headless ctest launches read the existing INI.
 The converter's `pack` command refuses an unimported requested language instead of silently recording a fallback
