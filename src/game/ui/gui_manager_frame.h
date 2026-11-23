@@ -432,7 +432,7 @@ template<class Env> void SizeBar(Env& env, View* manager, ui::Renderer* renderer
 {
     if (manager->m_mode == kNoGuiMode) return;
     const bool wide = static_cast<uint32_t>(renderer->m_width) >= kWideScreenWidth;
-    manager->m_barHeight = wide ? 0x5e : 0x4b;
+    manager->m_barHeight = ui::BarHeight(renderer->m_width);
     env.SetGuiBarHeight(renderer, wide ? 0x58 : 0x46);
 }
 

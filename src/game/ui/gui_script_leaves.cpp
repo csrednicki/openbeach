@@ -606,9 +606,8 @@ bool ParseDialogItem(GuiScript& s)
     if (centre) {
         // In the middle of the map above the panel, as if the panel (which slides away while idle) were always shown.
         const auto* renderer = game::GetRenderer();
-        // The panel's height by its width, as SizeBar sets it (gui_manager_frame.h): the script loads in the menus, where the
-        // manager has not sized the panel yet.
-        const int32_t bar = ui::BarLayoutWidth(renderer->m_width) >= 800 ? 0x5e : 0x4b;
+        // The panel's height: the script loads in the menus, where the manager has not sized the panel yet.
+        const int32_t bar = ui::BarHeight(renderer->m_width);
         const int32_t w = b.x1 - b.x0, h = b.y1 - b.y0;
         b.x0 = (renderer->m_width - w) / 2;
         b.y0 = std::max(0, (renderer->m_height - bar - h) / 2);

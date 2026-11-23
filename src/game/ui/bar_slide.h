@@ -53,6 +53,13 @@ private:
     float m_inFrom = 0;
 };
 
+// Whether the goals' panel (`side` wide, with its gap) fits beside a centred panel `layout` wide: not on a 4:3 screen of the
+// panel's own width, where it keeps its original place over the map.
+inline bool GoalsFitBeside(int screenWidth, int layout, int side)
+{
+    return side > 0 && screenWidth >= layout + side;
+}
+
 // The left edge of a centred panel `layout` wide with the goals' panel (`side` wide) on its left, the two centred together on a
 // screen `screenWidth` wide; the panel itself always stays on the screen.
 inline int CentredBarX(int screenWidth, int layout, int side)

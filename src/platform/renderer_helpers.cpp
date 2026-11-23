@@ -49,8 +49,9 @@ void SetViewport(Renderer& r, const int* rect)
 }
 void SetGuiBarHeight(Renderer& r, int height)
 {
-    // Beside a centred panel (ui::SetCenteredBar) the map runs to the screen's bottom edge, under the panel too.
-    r.m_bottomTrim = ui::BarOffsetX(r.m_width) > 0 ? 0 : height;
+    // With a centred panel (ui::SetCenteredBar) the map runs to the screen's bottom edge, under the panel too: beside it, and where
+    // it slides out of sight (a 4:3 screen of its own width too, else the hidden panel left stale rows).
+    r.m_bottomTrim = ui::CenteredBar() ? 0 : height;
 }
 
 void SetZoomLevel(Renderer& r, int level)

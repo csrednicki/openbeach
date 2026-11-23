@@ -760,7 +760,7 @@ void DrawOverlay(ui::GuiManager* gui)
             (static_cast<ui::GuiWidget*>(gui->m_progressDialog))->DrawOverlay();
     };
     // Beside a centred bottom panel the goals stand on its left (ui::SetBarSide) and slide with it.
-    const bool goalsBeside = ui::CenteredBar() && gui->m_progressVisible && gui->m_mode != 2;
+    const bool goalsBeside = ui::GoalsBesideBar(width) && gui->m_progressVisible && gui->m_mode != 2;
     if (gui->m_mode != 6) {
         if (gui->m_mode != 2) {
             // A centred panel slides out of sight while the player is idle (ui::BarHiddenRows): a sliding one is drawn in place with

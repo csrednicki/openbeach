@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/char16.h"
+#include <cstdint>
 #include <span>
 
 namespace obl::ui {
@@ -22,10 +23,18 @@ void SetCenteredBar(bool centered);
 bool CenteredBar();
 int BarLayoutWidth(int screenWidth);
 int BarOffsetX(int screenWidth);
+// The bottom panel's height on a screen `screenWidth` wide (GuiManager's SizeBar): the tall one from 800 pixels on (compared
+// unsigned), the one of the 640 panel below.
+inline int BarHeight(int screenWidth)
+{
+    return static_cast<uint32_t>(screenWidth) >= 800 ? 0x5e : 0x4b;
+}
 // The scenario goals' panel (GuiManager::CreateProgressBar, `width` wide) stands right beside a centred bottom panel, on its left;
-// the two are centred together. BarSideX is its left edge (BarOffsetX less its width), 0 without a centred panel.
+// the two are centred together. BarSideX is its left edge (BarOffsetX less its width), 0 without a centred panel. Where the
+// screen has no room for both (4:3 at 800 or 640 wide) the goals keep their original place over the map (GoalsBesideBar false).
 void SetBarSide(int width);
 int BarSideX(int screenWidth);
+bool GoalsBesideBar(int screenWidth);
 // The centred panel slides out of sight after a while without input and back on any action (bar_slide.h); without a centred
 // panel, or with the Controls options' auto-hide off, it never hides. WakeBar is the platform's report of an action.
 void WakeBar();

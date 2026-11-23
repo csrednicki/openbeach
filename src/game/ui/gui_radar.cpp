@@ -237,8 +237,8 @@ int ProgressY(const Progress* gui)
     const auto* renderer = static_cast<const ui::Renderer*>(gui->m_renderer);
     // Beside a centred bottom panel (ui::SetCenteredBar) its top is the panel's (it would not leave the screen: the 640 panel is
     // lower than it).
-    if (ui::CenteredBar() && gui->m_progressSprite) {
-        const int bar = gui->m_barHeight ? gui->m_barHeight : ui::BarLayoutWidth(renderer->m_width) >= 800 ? 0x5e : 0x4b;
+    if (ui::GoalsBesideBar(renderer->m_width) && gui->m_progressSprite) {
+        const int bar = gui->m_barHeight ? gui->m_barHeight : ui::BarHeight(renderer->m_width);
         return renderer->m_height - std::max(bar, SpriteHeight(gui->m_progressSprite));
     }
     return ProgressBarY(static_cast<uint32_t>(renderer->m_width), static_cast<uint32_t>(renderer->m_height));
@@ -248,7 +248,8 @@ constexpr int kGoalsGap = 20; // between the goals and a centred bottom panel
 
 int ProgressX(const Progress* gui)
 {
-    return ui::CenteredBar() ? ui::BarSideX(static_cast<const ui::Renderer*>(gui->m_renderer)->m_width) : 9;
+    const int width = static_cast<const ui::Renderer*>(gui->m_renderer)->m_width;
+    return ui::GoalsBesideBar(width) ? ui::BarSideX(width) : 9;
 }
 
 void CreateProgressBar(Progress* gui)

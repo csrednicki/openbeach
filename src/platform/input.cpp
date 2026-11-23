@@ -641,9 +641,9 @@ void ReadSdlTouchEvents()
         // The scenario goals stand beside a centred panel (ui::SetBarSide), as part of it.
         const ui::GuiManager* manager = game::GetGuiManager();
         int bar = manager ? manager->m_barHeight : 0;
-        if (manager && ui::CenteredBar() && manager->m_progressVisible) bar = std::max<int>(bar, game.cy - manager->m_progressY0);
+        if (manager && ui::GoalsBesideBar(game.cx) && manager->m_progressVisible) bar = std::max<int>(bar, game.cy - manager->m_progressY0);
         const float barLeft = static_cast<float>(image.left) +
-                static_cast<float>(ui::CenteredBar() ? ui::BarSideX(game.cx) : ui::BarOffsetX(game.cx)) *
+                static_cast<float>(ui::GoalsBesideBar(game.cx) ? ui::BarSideX(game.cx) : ui::BarOffsetX(game.cx)) *
                         static_cast<float>(image.right - image.left) / static_cast<float>(std::max<LONG>(game.cx, 1));
         const float barTop = static_cast<float>(image.top) +
                 static_cast<float>(game.cy - bar) * static_cast<float>(image.bottom - image.top) /

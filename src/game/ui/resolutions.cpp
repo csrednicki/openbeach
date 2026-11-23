@@ -179,11 +179,18 @@ namespace {
 bool g_centeredBar;
 int g_barSide; // the goals' panel beside the centred bottom panel (SetBarSide)
 
-// The sandbox has no goals (the progress bar stays hidden, gui_tooltip.cpp): the panel is centred on its own there.
-int GoalsSide()
+int BarLayoutWidthOf(int screenWidth)
+{
+    return screenWidth >= 800 ? 800 : screenWidth >= 640 ? 640 : screenWidth;
+}
+
+// The sandbox has no goals (the progress bar stays hidden, gui_tooltip.cpp), and a screen without room beside the panel keeps
+// them in their original place: the panel is centred on its own there.
+int GoalsSide(int screenWidth)
 {
     const game::Game* game = game::GetGame();
-    return game && game->m_sandbox ? 0 : g_barSide;
+    if (game && game->m_sandbox) return 0;
+    return GoalsFitBeside(screenWidth, BarLayoutWidthOf(screenWidth), g_barSide) ? g_barSide : 0;
 }
 BarSlide g_barSlide;
 
@@ -222,7 +229,7 @@ int BarHiddenRows(int barHeight)
 int BarLayoutWidth(int screenWidth)
 {
     if (!g_centeredBar) return screenWidth;
-    return screenWidth >= 800 ? 800 : screenWidth >= 640 ? 640 : screenWidth;
+    return BarLayoutWidthOf(screenWidth);
 }
 
 int BarOffsetX(int screenWidth)
@@ -230,7 +237,7 @@ int BarOffsetX(int screenWidth)
     const int layout = BarLayoutWidth(screenWidth);
     if (!g_centeredBar) return (screenWidth - layout) / 2;
     // The goals' panel and the bottom panel side by side, centred together; the bottom panel stays on the screen.
-    return CentredBarX(screenWidth, layout, GoalsSide());
+    return CentredBarX(screenWidth, layout, GoalsSide(screenWidth));
 }
 
 void SetBarSide(int width)
@@ -240,7 +247,12 @@ void SetBarSide(int width)
 
 int BarSideX(int screenWidth)
 {
-    return g_centeredBar ? std::max(0, BarOffsetX(screenWidth) - GoalsSide()) : 0;
+    return g_centeredBar ? std::max(0, BarOffsetX(screenWidth) - GoalsSide(screenWidth)) : 0;
+}
+
+bool GoalsBesideBar(int screenWidth)
+{
+    return g_centeredBar && GoalsSide(screenWidth) > 0;
 }
 
 bool FindExtendedResolution(int height, int* width)

@@ -53,3 +53,12 @@ OBL_TEST_CASE("bar_slide.goals_and_panel_centred_together")
     OBL_CHECK(obl::ui::CentredBarX(1304, 800, 0) == 252); // no goals: the panel alone in the middle
     OBL_CHECK(obl::ui::CentredBarX(840, 800, 103) == 40); // too narrow for both: the panel stays on the screen
 }
+
+OBL_TEST_CASE("bar_slide.goals_beside_the_panel_only_where_they_fit")
+{
+    OBL_CHECK(obl::ui::GoalsFitBeside(1044, 800, 103)); // wide: beside the panel
+    OBL_CHECK(obl::ui::GoalsFitBeside(782, 640, 103));
+    OBL_CHECK(!obl::ui::GoalsFitBeside(800, 800, 103)); // 4:3 at 800x600: their original place
+    OBL_CHECK(!obl::ui::GoalsFitBeside(640, 640, 103));
+    OBL_CHECK(!obl::ui::GoalsFitBeside(1304, 800, 0)); // no goals (the sandbox)
+}
