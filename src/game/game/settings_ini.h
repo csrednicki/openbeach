@@ -77,6 +77,9 @@ struct VideoValues {
     uint8_t barAutoHide = 1;
     int barHideSeconds = kDefaultBarHideSeconds;
     bool controls = false; // [Controls] is saved only where the Controls tab is (touch screens)
+    // [Video] on touch screens: the resolutions at the screen's aspect (else the 4:3 ones) and the frame counter.
+    uint8_t wideScreen = 1;
+    uint8_t fpsCounter = 0;
 };
 
 namespace detail {
@@ -167,6 +170,8 @@ template<class Env> void LoadVideo(Env& env, VideoValues& values)
         values.cursorSpeed = std::clamp(std::atoi(text.c_str()), 0, 100);
     if (detail::Get(env, kVideoSection, "ScrollSpeed", kVideoBuffer, text))
         values.scrollSpeed = std::clamp(std::atoi(text.c_str()), 0, 100);
+    if (detail::Get(env, kVideoSection, "WideScreen", kVideoBuffer, text)) values.wideScreen = std::atoi(text.c_str()) != 0;
+    if (detail::Get(env, kVideoSection, "FpsCounter", kVideoBuffer, text)) values.fpsCounter = std::atoi(text.c_str()) != 0;
     if (detail::Get(env, kControlsSection, "TouchControls", kVideoBuffer, text)) values.touchControls = std::atoi(text.c_str()) != 0;
     if (detail::Get(env, kControlsSection, "Magnifier", kVideoBuffer, text)) values.magnifier = std::atoi(text.c_str()) != 0;
     if (detail::Get(env, kControlsSection, "BarAutoHide", kVideoBuffer, text)) values.barAutoHide = std::atoi(text.c_str()) != 0;
@@ -187,6 +192,8 @@ template<class Env> void SaveVideo(Env& env, const VideoValues& values)
         env.Write(kVideoSection, "ScrollSpeed", detail::Number(values.scrollSpeed));
     }
     if (values.controls) {
+        env.Write(kVideoSection, "WideScreen", detail::Number(values.wideScreen));
+        env.Write(kVideoSection, "FpsCounter", detail::Number(values.fpsCounter));
         env.Write(kControlsSection, "TouchControls", detail::Number(values.touchControls));
         env.Write(kControlsSection, "Magnifier", detail::Number(values.magnifier));
         env.Write(kControlsSection, "BarAutoHide", detail::Number(values.barAutoHide));

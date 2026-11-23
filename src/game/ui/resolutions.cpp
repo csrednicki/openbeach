@@ -30,6 +30,20 @@ namespace {
 
 using TableEntry = ResolutionListEntry;
 
+struct Resolution {
+    int width, height;
+    std::string key; // "1920_1080"
+    Text16 text; // L"1920x1080"
+};
+
+std::vector<Resolution> g_resolutions;
+int g_screenWidth, g_screenHeight; // BuildAspectResolutionTable's screen; 0 with the desktop list
+constexpr int kWideStartHeight = 480, kFourThreeStartHeight = 600; // SetWideScreen's choice for an unlisted resolution
+// The 4:3 list a phone gets with Wide screen off: the original game's sizes.
+constexpr ui::DisplaySize kFourThree[] = {{640, 480}, {800, 600}, {1024, 768}, {1280, 960}};
+std::vector<TableEntry> g_table;
+int g_lastScreenHeight;
+
 // The four modes the options list offers before the extended table is built.
 constexpr ResolutionListEntry kBaseResolutions[] = {
         {0, "640_480", 480},
@@ -38,19 +52,11 @@ constexpr ResolutionListEntry kBaseResolutions[] = {
         {3, "1280_960", 960},
 };
 
-struct Resolution {
-    int width, height;
-    std::string key; // "1920_1080"
-    Text16 text; // L"1920x1080"
-};
-
-std::vector<Resolution> g_resolutions;
-std::vector<TableEntry> g_table;
-int g_lastScreenHeight;
-
 // The list's entries, ordered by width and then height.
 void FillTable(std::vector<ui::DisplaySize> sizes)
 {
+    g_resolutions.clear();
+    g_table.clear();
     std::sort(sizes.begin(), sizes.end(), [](ui::DisplaySize a, ui::DisplaySize b) { return a.cx != b.cx ? a.cx < b.cx : a.cy < b.cy; });
     for (ui::DisplaySize s : sizes) {
         Resolution r{s.cx, s.cy, std::to_string(s.cx) + "_" + std::to_string(s.cy), text16::Decimal(s.cx) + u"x" + text16::Decimal(s.cy)};
@@ -113,6 +119,30 @@ void BuildAspectResolutionTable(int screenWidth, int screenHeight)
     for (int height : {360, 480, 600, 768}) sizes.push_back({AspectWidth(height, screenWidth, screenHeight), height});
     FillTable(std::move(sizes));
     LogTable();
+    g_screenWidth = screenWidth;
+    g_screenHeight = screenHeight;
+}
+
+bool WideScreenAvailable()
+{
+    return g_screenWidth > 0 && g_screenHeight > 0;
+}
+
+void SetWideScreen(bool wide, int& width, int& height)
+{
+    if (!WideScreenAvailable()) return;
+    if (wide) {
+        BuildAspectResolutionTable(g_screenWidth, g_screenHeight);
+    } else {
+        FillTable({std::begin(kFourThree), std::end(kFourThree)});
+        LogTable();
+    }
+    std::vector<ui::DisplaySize> listed;
+    for (const auto& r : g_resolutions) listed.push_back({r.width, r.height});
+    const ui::DisplaySize chosen =
+            ListedResolution(listed.data(), listed.size(), {width, height}, wide ? kWideStartHeight : kFourThreeStartHeight);
+    width = chosen.cx;
+    height = chosen.cy;
 }
 
 const Char16* ResolutionText(const char* key)

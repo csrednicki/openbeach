@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cwchar>
 
 #include "core/text16.h"
@@ -23,6 +24,18 @@ struct DisplaySize {
 inline int AspectWidth(int height, int screenWidth, int screenHeight)
 {
     return 2 * static_cast<int>(std::lround(height * static_cast<double>(screenWidth) / (2.0 * std::max(screenHeight, 1))));
+}
+
+// The resolution an Android start plays at: a saved one the screen's aspect list (`listed`) holds stays; any other (none
+// saved reads as 800x600, an older 4:3 choice) becomes the listed one `preferredHeight` tall.
+inline DisplaySize ListedResolution(const DisplaySize* listed, size_t count, DisplaySize saved, int preferredHeight)
+{
+    const DisplaySize* preferred = nullptr;
+    for (size_t i = 0; i < count; ++i) {
+        if (listed[i].cx == saved.cx && listed[i].cy == saved.cy) return saved;
+        if (listed[i].cy == preferredHeight) preferred = &listed[i];
+    }
+    return preferred ? *preferred : saved;
 }
 
 // Integer bounds keep the presenter, cursor and GDI fallback on the same pixel edges.

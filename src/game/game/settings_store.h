@@ -28,6 +28,8 @@ struct Settings {
     uint8_t m_magnifier = 1; // the D-pad's magnifier button
     uint8_t m_barAutoHide = 1; // the centred bottom panel slides out of sight (ui::BarHiddenRows)
     int m_barHideSeconds = settings::kDefaultBarHideSeconds;
+    uint8_t m_wideScreen = 1; // Video options on touch screens: the resolutions at the screen's aspect, else 4:3 (ui::SetWideScreen)
+    uint8_t m_fpsCounter = 0; // Video options on touch screens: frames per second at the top of the screen (game.cpp)
     uint8_t m_nudgeScroll = 1;
     uint8_t m_seaEffects = 1;
     uint8_t m_lightEffects = 1;

@@ -1,5 +1,6 @@
 #include "game/game/settings_store.h"
 #include "game/ui/own_controls.h"
+#include "game/ui/resolutions.h"
 #include "game/game/game_accessors.h"
 #include "game/game/game.h"
 #include "core/log.h"
@@ -60,6 +61,8 @@ settings::VideoValues CaptureVideo(const Settings& s)
     values.magnifier = s.m_magnifier;
     values.barAutoHide = s.m_barAutoHide;
     values.barHideSeconds = s.m_barHideSeconds;
+    values.wideScreen = s.m_wideScreen;
+    values.fpsCounter = s.m_fpsCounter;
     values.controls = own_controls::TouchScreen();
     return values;
 }
@@ -80,6 +83,8 @@ void LoadVideo(Settings& s)
     s.m_magnifier = values.magnifier;
     s.m_barAutoHide = values.barAutoHide;
     s.m_barHideSeconds = values.barHideSeconds;
+    s.m_wideScreen = values.wideScreen;
+    s.m_fpsCounter = values.fpsCounter;
 }
 void SaveVideo(const Settings& s, const char* path)
 {
@@ -154,6 +159,7 @@ std::unique_ptr<Settings> Create()
     s->m_iniPath = os::CurrentDirectory() + os::kPathSeparator + settings::kIniFileName;
     g_positionsRebased = true;
     s->m_loaded = Load(*s);
+    ui::SetWideScreen(s->m_wideScreen != 0, s->m_resolutionWidth, s->m_resolutionHeight);
     return s;
 }
 Settings& Current()

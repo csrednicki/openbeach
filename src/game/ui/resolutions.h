@@ -10,6 +10,11 @@ namespace obl::ui {
 void BuildResolutionTable(int monitorWidth, int monitorHeight);
 // The Android list (window_placement.cpp): the heights 360, 480, 600 and 768, each at the screen's aspect (AspectWidth).
 void BuildAspectResolutionTable(int screenWidth, int screenHeight);
+// Video options > Wide screen (Android, where the screen is known): on, the list at the screen's aspect; off, the 4:3 one
+// (640x480 ... 1280x960). A resolution the list does not hold (none saved reads as 800x600) becomes its 480-high one when wide,
+// 800x600 when not (ListedResolution). With the desktop list nothing changes (settings_store::Create, the option's variable).
+bool WideScreenAvailable();
+void SetWideScreen(bool wide, int& width, int& height);
 
 // The bottom panel at its own width (800, or 640 below 800), centred, instead of stretched over a wider screen (Android, set by
 // window_placement.cpp before the GUI loads). The panel's script lays out at BarLayoutWidth and moves right by BarOffsetX.

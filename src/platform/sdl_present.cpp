@@ -45,6 +45,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <cstdio>
 #include <cstring>
 #include <vector>
 

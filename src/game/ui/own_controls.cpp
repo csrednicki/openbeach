@@ -1,11 +1,13 @@
 #include "game/ui/own_controls.h"
 
 #include "game/game/settings_store.h"
+#include "game/ui/resolutions.h"
 
 #include <initializer_list>
 #include <iterator>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace obl::own_controls {
 
@@ -88,9 +90,39 @@ constexpr std::string_view kPadOnly[] = {
         "",
 };
 
-// The Video tab's checkbox rows on touch screens: 30 pixels apart, as the Audio and Controls tabs' (a finger needs the room).
-// The rows that start at 103, 118, 133 and 148 move to 103, 133, 163 and 193; the resolution row and the reset button stay.
+// The Video tab's checkboxes on touch screens, one column under the resolution: OpenBeach's own rows first (Wide screen where the
+// screen's aspect is known, ui::WideScreenAvailable, then the frame counter), then the script's four, which start at 103, 118, 133
+// and 148. All stand 23 pixels apart from 100, more room for a finger than 15, and the sixth ends at 230, above the reset button
+// (242); the resolution row stays.
 constexpr int kVideoFirstRow = 103, kVideoRowCount = 4, kVideoRow = 15;
+constexpr int kSpreadFirstRow = 100, kSpreadRow = 23;
+
+struct OwnVideoRow {
+    const char* comment;
+    const char* text;
+    const char* variable;
+    const char* tip;
+};
+constexpr OwnVideoRow kWideScreenRow{
+        "resolutions that fill the screen, else the 4:3 ones", "OBL_WIDE_SCREEN", "WIDE_SCREEN", "OBL_TIPTEXT_WIDE_SCREEN"};
+constexpr OwnVideoRow kFpsRow{"frames per second at the top of the screen", "OBL_FPS_COUNTER", "FPS_COUNTER", "OBL_TIPTEXT_FPS_COUNTER"};
+
+// The own rows' script lines, in the spread rows from the first.
+std::vector<std::string> OwnVideoLines(std::initializer_list<OwnVideoRow> rows)
+{
+    std::vector<std::string> lines;
+    int row = 0;
+    for (const OwnVideoRow& r : rows) {
+        const std::string y0 = std::to_string(kSpreadFirstRow + row * kSpreadRow),
+                          y1 = std::to_string(kSpreadFirstRow + row * kSpreadRow + 15);
+        ++row;
+        lines.push_back("");
+        lines.push_back(std::string("            // ") + r.comment + " (OpenBeach)");
+        lines.push_back("            Text(32, " + y0 + ", 176, " + y1 + ", " + r.text + ", 0, 0, 1)");
+        lines.push_back("            CheckBox(194, " + y0 + ", 210, " + y1 + ", UI3_fieldcheckbox, " + r.variable + ", " + r.tip + ")");
+    }
+    return lines;
+}
 
 // `rows`, each on a line of its own, inserted before the line break at `lineEnd` (the line keeps its break).
 void InsertRows(std::string& script, size_t lineEnd, const std::string_view* rows, size_t count)
@@ -104,7 +136,8 @@ void InsertRows(std::string& script, size_t lineEnd, const std::string_view* row
     script.insert(crlf ? lineEnd - 1 : lineEnd, insert);
 }
 
-void AddSpeedSliders(std::string& script)
+// `rows` after the Video tab's last checkbox line (kAnchor).
+void AddVideoRows(std::string& script, const std::string_view* rows, size_t count)
 {
     const size_t tab = script.find(kTab);
     if (tab == std::string::npos) return;
@@ -115,7 +148,12 @@ void AddSpeedSliders(std::string& script)
     if (nextTab != std::string::npos && nextTab < anchor) return;
     const size_t lineEnd = script.find('\n', anchor);
     if (lineEnd == std::string::npos) return;
-    InsertRows(script, lineEnd, kRows, std::size(kRows));
+    InsertRows(script, lineEnd, rows, count);
+}
+
+void AddSpeedSliders(std::string& script)
+{
+    AddVideoRows(script, kRows, std::size(kRows));
 }
 
 // The number at `at` (digits), its value and where it ends.
@@ -128,8 +166,9 @@ bool Number(const std::string& script, size_t at, int& value, size_t& end)
     return true;
 }
 
-// The second and fourth numbers of a `Text(` or `CheckBox(` line inside the Video tab (y0, y1), moved to the spread rows.
-void SpreadVideoRows(std::string& script)
+// The second and fourth numbers of a `Text(` or `CheckBox(` line inside the Video tab (y0, y1), moved to the spread rows after
+// `ownRows` of OpenBeach's.
+void SpreadVideoRows(std::string& script, int ownRows)
 {
     const size_t tab = script.find(kTab);
     if (tab == std::string::npos) return;
@@ -151,7 +190,7 @@ void SpreadVideoRows(std::string& script)
             if (!ok || values[1] < kVideoFirstRow || (values[1] - kVideoFirstRow) % kVideoRow != 0) continue;
             const int row = (values[1] - kVideoFirstRow) / kVideoRow;
             if (row >= kVideoRowCount) continue;
-            const int y0 = kVideoFirstRow + 2 * row * kVideoRow, y1 = y0 + (values[3] - values[1]);
+            const int y0 = kSpreadFirstRow + (ownRows + row) * kSpreadRow, y1 = y0 + (values[3] - values[1]);
             // The later number first, so that the earlier one's position still holds.
             size_t y1End = 0, y0End = 0;
             int unused = 0;
@@ -204,7 +243,11 @@ std::string Apply(std::string script)
     // A touch screen has the speed sliders in its Controls tab, and room for a finger between the Video rows.
     if (g_padPointer && !g_touchScreen) AddSpeedSliders(script);
     if (g_touchScreen) {
-        SpreadVideoRows(script);
+        const std::vector<std::string> own =
+                ui::WideScreenAvailable() ? OwnVideoLines({kWideScreenRow, kFpsRow}) : OwnVideoLines({kFpsRow});
+        SpreadVideoRows(script, ui::WideScreenAvailable() ? 2 : 1);
+        const std::vector<std::string_view> views(own.begin(), own.end());
+        AddVideoRows(script, views.data(), views.size());
         AddControlsTab(script);
     }
     return script;

@@ -28,6 +28,7 @@
 #include "game/ui/save_slots.h"
 #include "game/ui/font_construct.h"
 #include "game/ui/font.h"
+#include "game/ui/text_renderer.h"
 
 #include "game/game/game_accessors.h"
 #include "game/game/settings_store.h"
@@ -250,6 +251,17 @@ struct VariableEnv {
     void SetSeaEffects(uint8_t enabled) const { ui::renderer::SetSeaEffects(GetRenderer(), enabled); }
     void SetKeyline(uint8_t enabled) const { object::object_manager::SetKeyline(GetObjectManager(), enabled); }
     void SetGameSpeed(int level) const { SubmitCommand(command::SetGameSpeed{level}); }
+    // The list changes at once; in a game the resolution follows as a pick from the list would (GuiManager's request, which also
+    // stores it in the settings), else only the settings take it.
+    void SetWideScreen(bool wide) const
+    {
+        game::Settings& settings = Settings();
+        int width = settings.m_resolutionWidth, height = settings.m_resolutionHeight;
+        ui::SetWideScreen(wide, width, height);
+        settings.m_resolutionWidth = width;
+        settings.m_resolutionHeight = height;
+        if (GetWorld()) game->m_guiManager->RequestResolution(width, height);
+    }
     void PlaylistCommand(int command) const { static_cast<audio::MusicPlayer*>(MusicPlayer())->Command(command); }
 };
 void GetVariable(Game* game, const char* name, Char16* out)
@@ -406,6 +418,7 @@ void ChangeResolution(Game* game, int width, int height)
 {
     ui::Renderer* renderer = GetRenderer();
     if (renderer->m_width == width && renderer->m_height == height) return;
+    OBL_LOG("resolution: %dx%d -> %dx%d", renderer->m_width, renderer->m_height, width, height);
     if (!ui::renderer::ChangeResolution(renderer, width, height)) ShowDirectXError(game);
     InputSetScreenSize(*GetInput(), width, height);
     game->m_currentState->ChangeResolution(width, height);
@@ -674,6 +687,57 @@ void __cdecl ClipBlitRect(int* dst, int* src)
     }
 }
 
+// Video options > Frame counter (settings_store.h): the game's frames per second (GameClock::m_fps) at the top of the screen, in its
+// middle (a phone's rounded corners cut its corners off), in the GUI's title font, white on a see-through dark box. The text
+// renderer is shared with the GUI's texts, so its state comes back afterwards.
+constexpr int kFrameCounterFont = 2; // the windows' titles (Options, Load game): the GUI's largest text
+constexpr int kFrameCounterTop = 4, kFrameCounterPadding = 4;
+
+// The box: each pixel keeps 3/8 of its brightness (a quarter plus an eighth, per channel, so no channel spills into the next).
+void DarkenRect(ui::Renderer* renderer, int x, int y, int width, int height)
+{
+    x = std::max(x, 0);
+    y = std::max(y, 0);
+    width = std::min(width, renderer->m_width - x);
+    height = std::min(height, renderer->m_height - y);
+    if (width <= 0 || height <= 0) return;
+    uint16_t* bits = ui::renderer::GetBackBufferBits(renderer);
+    if (!bits) return;
+    const size_t pitch = ui::renderer::GetSurfacePitch(renderer) / 2;
+    const bool rgb555 = renderer->m_rgb555 != 0;
+    const uint16_t quarter = rgb555 ? 0x1ce7 : 0x39e7, eighth = rgb555 ? 0x0c63 : 0x18e3;
+    for (int row = y; row < y + height; ++row)
+        for (uint16_t* pixel = bits + row * pitch + x; pixel != bits + row * pitch + x + width; ++pixel)
+            *pixel = static_cast<uint16_t>(((*pixel >> 2) & quarter) + ((*pixel >> 3) & eighth));
+    ui::renderer::UnlockSurface(renderer);
+}
+
+void DrawFrameCounter(ui::GuiManager* gui)
+{
+    if (!settings_store::Current().m_fpsCounter) return;
+    ui::TextRenderer* text = gui->m_textRenderers[kFrameCounterFont];
+    if (!text || !text->m_font) return;
+    const ui::TextRenderer saved = *text;
+    Char16 line[16];
+    text16::Format(line, 16, u"%d FPS", GetGameClock()->m_fps);
+    const int screenWidth = gui->m_renderer->m_width;
+    const int width = ui::font_text::MeasureWidth(text, line), x = (screenWidth - width) / 2;
+    int height = 0;
+    for (const Char16* c = line; *c; ++c) {
+        const ui::GlyphRect& glyph = text->m_font->m_glyphs[static_cast<uint8_t>(*c)];
+        height = std::max(height, glyph.bottom - glyph.top);
+    }
+    ui::renderer::SetActiveSurface(gui->m_renderer, 0);
+    DarkenRect(gui->m_renderer, x - kFrameCounterPadding, kFrameCounterTop - kFrameCounterPadding / 2, width + 2 * kFrameCounterPadding,
+            height + kFrameCounterPadding);
+    ui::font_text::SetRect(text, 0, 0, screenWidth, gui->m_renderer->m_height);
+    ui::font_text::SetAlign(text, 0);
+    ui::font_text::SetColor(text, 0xffffff);
+    ui::font_text::SetOutlined(text, 0);
+    ui::font_text::DrawLine(text, x, kFrameCounterTop, line);
+    *text = saved;
+}
+
 // Everything the GUI draws over the presented world, in direct mode on the back buffer: an optional background capture, the mode's
 // overlay, the HUD bar with its widgets and the message balloon, radar, progress bar, the open dialogs from the last to the first, the
 // software cursor (clipped at the right and bottom edges), credits and tooltip. Mode 6 keeps only the cursor, credits and tooltip.
@@ -783,6 +847,7 @@ void DrawOverlay(ui::GuiManager* gui)
     }
     if (gui->m_credits) gui::CreditsDraw(reinterpret_cast<ui::GuiCredits*>(gui->m_credits));
     static_cast<ui::GuiTooltip*>(gui->m_tooltip)->Draw();
+    DrawFrameCounter(gui);
     gui->m_renderer->m_directMode = 0;
 }
 

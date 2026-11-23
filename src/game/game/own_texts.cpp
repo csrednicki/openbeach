@@ -62,6 +62,30 @@ constexpr Row kRows[] = {
                         u"czone: gesty dotykowe. Wy\x0142\x0105"
                         u"czone: wirtualny pad i touchpad"}},
         {"OBL_MAGNIFIER", {u"Magnifier", u"Loupe", u"Lente", u"Lupe", u"Lupa", u"Lupa"}},
+        {"OBL_WIDE_SCREEN",
+                {u"Wide screen",
+                        u"\x00c9"
+                        u"cran large",
+                        u"Schermo largo", u"Breitbild", u"Pantalla ancha", u"Szeroki ekran"}},
+        {"OBL_TIPTEXT_WIDE_SCREEN",
+                {u"Resolutions that fill the whole screen; off: the 4:3 ones",
+                        u"Des r\x00e9solutions qui remplissent l'\x00e9"
+                        u"cran ; sinon celles en 4:3",
+                        u"Risoluzioni che riempiono lo schermo; altrimenti quelle 4:3",
+                        u"Aufl\x00f6sungen, die den ganzen Bildschirm f\x00fcllen; sonst 4:3",
+                        u"Resoluciones que llenan la pantalla; si no, las 4:3",
+                        u"Rozdzielczo\x015b"
+                        u"ci wype\x0142niaj\x0105"
+                        u"ce ca\x0142y ekran; wy\x0142\x0105"
+                        u"czone: 4:3"}},
+        {"OBL_FPS_COUNTER",
+                {u"Frame counter", u"Compteur d'images", u"Contatore FPS", u"Bildz\x00e4hler", u"Contador de FPS", u"Licznik klatek"}},
+        {"OBL_TIPTEXT_FPS_COUNTER",
+                {u"Frames per second at the top of the screen",
+                        u"Images par seconde en haut de l'\x00e9"
+                        u"cran",
+                        u"Fotogrammi al secondo in alto sullo schermo", u"Bilder pro Sekunde oben auf dem Bildschirm",
+                        u"Fotogramas por segundo en la parte superior de la pantalla", u"Klatki na sekund\x0119 u g\x00f3ry ekranu"}},
         {"OBL_TIPTEXT_MAGNIFIER",
                 {u"A button above the D-pad zooms the screen 2x",
                         u"Un bouton au-dessus de la croix agrandit l'\x00e9"

@@ -56,11 +56,15 @@ OBL_TEST_CASE("own_controls.touch_screens_spread_the_video_rows")
     own_controls::SetTouchScreen(true);
     const std::string out = own_controls::Apply(video);
     OBL_CHECK(out.find("Text(32, 73, 176, 88, RES") != std::string::npos); // the resolution row stays
-    OBL_CHECK(out.find("CheckBox(194, 103, 210, 118, BOX, GAME_SEA") != std::string::npos);
-    OBL_CHECK(out.find("Text(32, 193, 176, 208, NUDGE") != std::string::npos); // the fourth row, 30 apart
-    OBL_CHECK(out.find("CheckBox(194,193,210,208, BOX, GAME_NUDGE") != std::string::npos);
+    // One column, 23 apart from 100: the frame counter first (no Wide screen without a known screen), then the script's rows.
+    OBL_CHECK(out.find("CheckBox(194, 100, 210, 115, UI3_fieldcheckbox, FPS_COUNTER") != std::string::npos);
+    OBL_CHECK(out.find("CheckBox(194, 123, 210, 138, BOX, GAME_SEA") != std::string::npos);
+    OBL_CHECK(out.find("Text(32, 192, 176, 207, NUDGE") != std::string::npos); // the fourth of the script's rows
+    OBL_CHECK(out.find("CheckBox(194,192,210,207, BOX, GAME_NUDGE") != std::string::npos);
     OBL_CHECK(out.find("Button(194, 242, 359, 266") != std::string::npos);
     OBL_CHECK(out.find("Text(32, 103, 176, 118, MUSIC") != std::string::npos); // the Audio tab is left alone
+    OBL_CHECK(out.find("FPS_COUNTER") < out.find("<TABAudioOptions"));
+    OBL_CHECK(out.find("WIDE_SCREEN") == std::string::npos);
     // The speed sliders are in the Controls tab, not the Video tab.
     const size_t videoTab = out.find("<TABVideoOptions"), cursor = out.find("CURSOR_SPEED");
     OBL_CHECK(videoTab != std::string::npos && cursor != std::string::npos && cursor < videoTab); // in the Define before the dialog

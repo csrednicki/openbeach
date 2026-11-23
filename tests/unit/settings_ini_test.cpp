@@ -182,23 +182,30 @@ OBL_TEST_CASE("settings_ini.controls_saved_only_with_their_tab")
     VideoValues video;
     LoadVideo(missing, video);
     OBL_CHECK(video.touchControls && video.magnifier && video.barAutoHide); // an INI from before the tab: touch, magnifier, auto-hide
+    OBL_CHECK(video.wideScreen && !video.fpsCounter); // wide resolutions, no frame counter
     OBL_CHECK_EQ(video.barHideSeconds, kDefaultBarHideSeconds);
 
     FakeIni plain;
     SaveVideo(plain, video);
-    for (const auto& write : plain.writes) OBL_CHECK(write.first.rfind("Controls/", 0) != 0); // no tab, no section
+    for (const auto& write : plain.writes) {
+        OBL_CHECK(write.first.rfind("Controls/", 0) != 0); // no tab, no section
+        OBL_CHECK(write.first != "Video/WideScreen" && write.first != "Video/FpsCounter"); // nor the Video tab's own rows
+    }
 
     FakeIni phone;
     VideoValues pad;
     pad.touchControls = 0;
     pad.magnifier = 0;
     pad.barHideSeconds = 17;
+    pad.wideScreen = 0;
+    pad.fpsCounter = 1;
     pad.controls = true;
     SaveVideo(phone, pad);
     VideoValues loaded;
     LoadVideo(phone, loaded);
     OBL_CHECK(!loaded.touchControls && !loaded.magnifier && loaded.barAutoHide);
     OBL_CHECK_EQ(loaded.barHideSeconds, 17);
+    OBL_CHECK(!loaded.wideScreen && loaded.fpsCounter);
 
     FakeIni outOfRange;
     outOfRange.values["Controls/BarHideSeconds"] = "0";

@@ -37,7 +37,7 @@ struct FakeEnv {
 
 struct FakeSettings {
     uint8_t m_nudgeScroll = 0, m_seaEffects = 0, m_lightEffects = 0, m_keyline = 0;
-    uint8_t m_touchControls = 1, m_magnifier = 1, m_barAutoHide = 1;
+    uint8_t m_touchControls = 1, m_magnifier = 1, m_barAutoHide = 1, m_wideScreen = 1, m_fpsCounter = 0;
 };
 
 struct FakeVariables {
@@ -61,6 +61,7 @@ struct FakeVariables {
     void SetSeaEffects(uint8_t on) { calls.push_back("sea " + std::to_string(on)); }
     void SetKeyline(uint8_t on) { calls.push_back("keyline " + std::to_string(on)); }
     void SetGameSpeed(int level) { calls.push_back("speed " + std::to_string(level)); }
+    void SetWideScreen(bool wide) { calls.push_back(std::string("wide ") + (wide ? "1" : "0")); }
     void PlaylistCommand(int command) { calls.push_back("playlist " + std::to_string(command)); }
     void Unrecognized(const char* name) { calls.push_back(std::string("unrecognized ") + name); }
 };
@@ -222,6 +223,12 @@ OBL_TEST_CASE("Game logic stores GUI variables and forwards them")
     logic::SetVariable(game, "BAR_AUTOHIDE", 0, env);
     OBL_CHECK(!env.settings.m_touchControls && !env.settings.m_magnifier && !env.settings.m_barAutoHide);
     OBL_CHECK_EQ(Value(logic::GetVariable(game, "MAGNIFIER", env)), 0);
-    const std::vector<std::string> expected = {"sea 1", "keyline 0", "speed 2", "playlist 9", "playlist 8", "unrecognized BOGUS"};
+    // The Video tab's own rows: Wide screen also switches the resolution list, the frame counter only stores its flag.
+    logic::SetVariable(game, "WIDE_SCREEN", 0, env);
+    logic::SetVariable(game, "FPS_COUNTER", 1, env);
+    OBL_CHECK(!env.settings.m_wideScreen && env.settings.m_fpsCounter);
+    OBL_CHECK_EQ(Value(logic::GetVariable(game, "WIDE_SCREEN", env)), 0);
+    OBL_CHECK_EQ(Value(logic::GetVariable(game, "FPS_COUNTER", env)), 1);
+    const std::vector<std::string> expected = {"sea 1", "keyline 0", "speed 2", "playlist 9", "playlist 8", "unrecognized BOGUS", "wide 0"};
     OBL_CHECK(env.calls == expected);
 }

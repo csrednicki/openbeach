@@ -88,6 +88,8 @@ template<class Env> std::optional<int> GetVariable(const game::Game& game, const
     if (!std::strcmp(name, "TOUCH_CONTROLS")) return settings.m_touchControls;
     if (!std::strcmp(name, "MAGNIFIER")) return settings.m_magnifier;
     if (!std::strcmp(name, "BAR_AUTOHIDE")) return settings.m_barAutoHide;
+    if (!std::strcmp(name, "WIDE_SCREEN")) return settings.m_wideScreen;
+    if (!std::strcmp(name, "FPS_COUNTER")) return settings.m_fpsCounter;
     if (!std::strcmp(name, "STAFF_MAKEALL_STATE") || !std::strcmp(name, "STAFF_DISMISS_STATE")) return env.StaffSelected() ? 1 : 0;
     if (!std::strcmp(name, "LOADSAVE_LOAD_STATE") || !std::strcmp(name, "LOADSAVE_LOADDELETE_STATE"))
         return env.Selected("LoadListBox") == 1 && !game.m_saveSlots.empty();
@@ -121,6 +123,7 @@ template<class Env> std::optional<int> GetVariable(const game::Game& game, const
 // Variable env (the set-variable step): Settings() as above, plus
 //   void SetSeaEffects(uint8_t) / SetKeyline(uint8_t)   the renderer's and the object manager's copy
 //   void SetGameSpeed(int)                             a world command
+//   void SetWideScreen(bool)                           the resolution list and the resolution that goes with it
 //   void PlaylistCommand(int)                          8 manual, 9 shuffle
 //   void Unrecognized(const char* name)
 template<class Env> void SetVariable(game::Game& game, const char* name, int input, Env& env)
@@ -142,6 +145,11 @@ template<class Env> void SetVariable(game::Game& game, const char* name, int inp
         settings.m_magnifier = input != 0;
     else if (!std::strcmp(name, "BAR_AUTOHIDE"))
         settings.m_barAutoHide = input != 0;
+    else if (!std::strcmp(name, "WIDE_SCREEN")) {
+        settings.m_wideScreen = input != 0;
+        env.SetWideScreen(input != 0);
+    } else if (!std::strcmp(name, "FPS_COUNTER"))
+        settings.m_fpsCounter = input != 0;
     else if (!std::strcmp(name, "GAME_SCENARIO_SELECT"))
         game::SelectMenuSlot(game, input);
     else if (!std::strcmp(name, "GAME_GAME_SPEED"))
