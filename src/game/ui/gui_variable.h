@@ -104,6 +104,8 @@ public:
     virtual bool ScenarioAlwaysAvailable(int scenario) const = 0; // that scenario is marked as always available
     virtual int GuestCapacityOfLodgings() const = 0; // BuildingDef::m_GuestCapacity summed over ACCOMBLK and HOTEL objects
     virtual int MeasureWidth(const Char16* text) const = 0;
+    // The Controls tab's panel delay (OpenBeach's own, own_controls.h), in seconds.
+    virtual int BarHideSeconds() const { return 0; }
 
     // The ferry schedule's next boat; writes `day` only for a non-empty schedule.
     virtual double NextBoatTime(int todayOnly, uint32_t* day) const = 0;

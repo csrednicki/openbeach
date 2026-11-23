@@ -13,11 +13,13 @@
 #include "game/ui/gui_variable_lifecycle.h"
 
 #include "game/game/game_accessors.h"
+#include "game/game/settings_store.h"
 #include "game/game/host_text.h"
 #include "game/ui/gui_content_runtime.h"
 #include "game/ui/gui_definitions.h"
 #include "game/ferry/ferry.h"
 #include "game/ui/text_table.h"
+#include "game/ui/screen_backdrop.h"
 #include "game/world/world_params.h"
 #include "game/ui/sound_api.h"
 #include "game/ui/font.h"
@@ -63,6 +65,7 @@ public:
     int WholeHour(float time) const override { return game::GameTimeWholeHour(time); }
     int QuarterMinutes(float time) const override { return game::GameTimeQuarterMinutes(time); }
     Swprintf Format() const override { return ui::host_text::Print; }
+    int BarHideSeconds() const override { return game::settings_store::Current().m_barHideSeconds; }
 
     bool ProviderText(const char* key, Char16* out) const override
     {
@@ -311,6 +314,8 @@ namespace obl::ui {
 
 void GuiVariable::DrawOverlay()
 {
+    // The touch help covers the loading screen's card, where its scenario title, status and description stand (main_menu.gui).
+    if (screen_backdrop::TouchHelpShown()) return;
     TextRenderer* renderer = gui::RendererOf(this);
     if (!renderer) {
         // Ignore fonts outside the script font table.

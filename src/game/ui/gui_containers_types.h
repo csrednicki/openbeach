@@ -11,6 +11,9 @@ namespace obl::ui {
 // from. Every method forwards to the children in list order, nothing is drawn by the template itself.
 struct GuiDefineData : GuiContainer {
     using GuiContainer::GuiContainer;
+    // OpenBeach: a Define of the own controls shows only while its condition holds (own_controls::DefineShown); this is what the
+    // children were last given. Every other Define keeps 1.
+    uint8_t m_shown = 1;
 };
 
 // gui_containers.cpp

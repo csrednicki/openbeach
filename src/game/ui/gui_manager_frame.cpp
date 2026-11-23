@@ -22,6 +22,7 @@
 #include "game/ui/gui_radar.h"
 #include "game/ui/cursor.h"
 #include "game/ui/gui_manager_frame.h"
+#include "game/ui/gui_touch_snap.h"
 #include "game/ui/resolutions.h"
 #include "game/ui/gui_modes_place.h"
 #include "game/ui/gui_script_parse.h"
@@ -340,6 +341,7 @@ struct GameEnv {
     int Wheel() { return game::GetInput()->m_wheel; }
     int LeftButton() { return game::GetInput()->m_leftButton; }
     int RightButton() { return game::GetInput()->m_rightButton; }
+    bool TouchSnap(View* manager, int& x, int& y, int left, int right) { return gui_touch_snap::Snap(manager, x, y, left, right); }
     void RadarMouse(View* manager, int x, int y, int state) { gui::RadarMouse(manager, x, y, state); }
     void ProgressBarMouse(View* manager, int x, int y, int state) { gui::ProgressBarMouse(manager, x, y, state); }
 

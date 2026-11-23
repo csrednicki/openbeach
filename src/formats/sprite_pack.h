@@ -38,6 +38,8 @@ struct Anim {
     int framesPerPage = 0; // columns * rows of a sheet page
     int runLength = kDefaultRunLength;
     std::vector<std::string> sheets; // relative to the sprites directory
+    // An own sprite's only sheet (game/ui/own_sprites.h), gray + alpha bytes already in memory; `sheets` is unused then.
+    std::vector<uint8_t> page;
     std::vector<uint16_t> frameMap; // direction * frames + frame -> unique frame, the identity expanded
 
     bool Mask() const { return plane == "pick" || plane == "shadow"; }
@@ -68,6 +70,9 @@ enum class ReadMode { Metadata, Palettes };
 // Metadata reads the L1 JSON only and leaves palettes empty; palette and sheet PNGs may be absent.
 bool ReadSprite(const std::filesystem::path& spritesDir, std::string_view key, bool is555, Sprite& sprite, std::string& error,
         ReadMode mode = ReadMode::Palettes);
+
+// The gray + alpha bytes of sheet page `index` of `anim` (columns * width pixels a row), checked against the animation's layout.
+bool ReadPage(const std::filesystem::path& spritesDir, const Anim& anim, int index, std::vector<uint8_t>& bytes, std::string& error);
 
 // Encodes the unique frames [first, end) of `anim` from its sheets: appends them to `data` and stores the offset of frame u
 // (relative to the start of `data` plus `base`) in offsets[u] (`offsets` holds uniqueFrames entries). Only the pages holding

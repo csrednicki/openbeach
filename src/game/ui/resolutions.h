@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/char16.h"
+#include <cstdint>
 #include <span>
 
 namespace obl::ui {
@@ -8,6 +9,36 @@ namespace obl::ui {
 // Extends Options > Video > resolution with widescreen/native sizes (windowed mode). The platform measures the monitor
 // (platform/window_placement.h) and places the window; this list only knows sizes.
 void BuildResolutionTable(int monitorWidth, int monitorHeight);
+// The Android list (window_placement.cpp): the heights 360, 480, 600 and 768, each at the screen's aspect (AspectWidth).
+void BuildAspectResolutionTable(int screenWidth, int screenHeight);
+// Video options > Wide screen (Android, where the screen is known): on, the list at the screen's aspect; off, the 4:3 one
+// (640x480 ... 1280x960). A resolution the list does not hold (none saved reads as 800x600) becomes its 480-high one when wide,
+// 800x600 when not (ListedResolution). With the desktop list nothing changes (settings_store::Create, the option's variable).
+bool WideScreenAvailable();
+void SetWideScreen(bool wide, int& width, int& height);
+
+// The bottom panel at its own width (800, or 640 below 800), centred, instead of stretched over a wider screen (Android, set by
+// window_placement.cpp before the GUI loads). The panel's script lays out at BarLayoutWidth and moves right by BarOffsetX.
+void SetCenteredBar(bool centered);
+bool CenteredBar();
+int BarLayoutWidth(int screenWidth);
+int BarOffsetX(int screenWidth);
+// The bottom panel's height on a screen `screenWidth` wide (GuiManager's SizeBar): the tall one from 800 pixels on (compared
+// unsigned), the one of the 640 panel below.
+inline int BarHeight(int screenWidth)
+{
+    return static_cast<uint32_t>(screenWidth) >= 800 ? 0x5e : 0x4b;
+}
+// The scenario goals' panel (GuiManager::CreateProgressBar, `width` wide) stands right beside a centred bottom panel, on its left;
+// the two are centred together. BarSideX is its left edge (BarOffsetX less its width), 0 without a centred panel. Where the
+// screen has no room for both (4:3 at 800 or 640 wide) the goals keep their original place over the map (GoalsBesideBar false).
+void SetBarSide(int width);
+int BarSideX(int screenWidth);
+bool GoalsBesideBar(int screenWidth);
+// The centred panel slides out of sight after a while without input and back on any action (bar_slide.h); without a centred
+// panel, or with the Controls options' auto-hide off, it never hides. WakeBar is the platform's report of an action.
+void WakeBar();
+int BarHiddenRows(int barHeight);
 
 // The label of an extended resolution when `key` is one of the list's own key pointers (compared by address, as the GUI
 // passes them back), else null. ui::text_table::Lookup asks this before the language table.

@@ -28,6 +28,7 @@
 #include "game/ui/gui_widgets.h"
 #include "game/ui/gui_widgets_image_bar.h"
 #include "game/ui/gui_containers.h"
+#include "game/ui/own_controls.h"
 #include "core/ascii_case.h"
 #include "core/log.h"
 #include "core/call_counter.h"

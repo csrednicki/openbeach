@@ -120,12 +120,21 @@ private:
     {
         int outW = 0, outH = 0;
         SDL_GetCurrentRenderOutputSize(m_renderer, &outW, &outH);
-        screen::Rect r = ui::ImageRect(m_width, m_height, outW, outH);
+        const SDL_FRect* source = nullptr; // the whole frame
+        int shownHeight = m_height;
+#ifdef __ANDROID__
+        // The picture is a 16:9 band in the middle of the 640x480 frame: on a wide phone that band alone fills the screen's height.
+        shownHeight = m_width * 9 / 16;
+        const SDL_FRect band{
+                0, static_cast<float>(m_height - shownHeight) / 2, static_cast<float>(m_width), static_cast<float>(shownHeight)};
+        source = &band;
+#endif
+        screen::Rect r = ui::ImageRect(m_width, shownHeight, outW, outH);
         SDL_FRect dst{static_cast<float>(r.left), static_cast<float>(r.top), static_cast<float>(r.right - r.left),
                 static_cast<float>(r.bottom - r.top)};
         SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, 255);
         SDL_RenderClear(m_renderer);
-        SDL_RenderTexture(m_renderer, m_texture, nullptr, &dst);
+        SDL_RenderTexture(m_renderer, m_texture, source, &dst);
 #ifdef OBL_HANDHELD
         // The handheld's panel shows only what frame_share.cpp hands it: the software renderer's frame goes there as a 16 bpp image.
         if (SDL_Surface* shot = SDL_RenderReadPixels(m_renderer, nullptr)) {

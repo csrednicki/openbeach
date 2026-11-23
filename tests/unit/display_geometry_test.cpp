@@ -16,6 +16,16 @@ OBL_TEST_CASE("geometry.image_rect_exact_scale")
     OBL_CHECK_EQ(r.bottom, 900);
 }
 
+OBL_TEST_CASE("geometry.aspect_width_follows_screen")
+{
+    // A 2608x1200 phone (about 19.5:9): the Android list's heights at its aspect, each width even.
+    OBL_CHECK_EQ(AspectWidth(360, 2608, 1200), 782);
+    OBL_CHECK_EQ(AspectWidth(480, 2608, 1200), 1044);
+    OBL_CHECK_EQ(AspectWidth(600, 2608, 1200), 1304);
+    OBL_CHECK_EQ(AspectWidth(768, 2608, 1200), 1670);
+    OBL_CHECK_EQ(AspectWidth(600, 1024, 768), 800); // a 4:3 screen keeps 4:3
+}
+
 OBL_TEST_CASE("geometry.image_rect_pillarbox_and_letterbox")
 {
     obl::screen::Rect wide = ImageRect(800, 600, 1920, 1080); // 1440x1080, bars left and right
@@ -154,4 +164,17 @@ OBL_TEST_CASE("geometry.scaled_client_size")
     OBL_CHECK_EQ(s.cy, 1080);
     OBL_CHECK(CoversMonitor(s, 1920, 1080));
     OBL_CHECK(CoversMonitor(ScaledClientSize(1920, 1080, 1.0, 1920, 1080), 1920, 1080)); // native = borderless
+}
+
+OBL_TEST_CASE("geometry.an_android_start_plays_wide")
+{
+    using obl::ui::DisplaySize;
+    using obl::ui::ListedResolution;
+    const DisplaySize listed[] = {{782, 360}, {1044, 480}, {1304, 600}, {1670, 768}};
+    auto chosen = [&](DisplaySize saved) { return ListedResolution(listed, 4, saved, 480); };
+    OBL_CHECK(chosen({800, 600}).cx == 1044 && chosen({800, 600}).cy == 480); // no INI, or the old 4:3 default
+    OBL_CHECK(chosen({640, 480}).cx == 1044 && chosen({640, 480}).cy == 480);
+    OBL_CHECK(chosen({1304, 600}).cx == 1304 && chosen({1304, 600}).cy == 600); // a listed choice stays
+    OBL_CHECK(chosen({782, 360}).cx == 782);
+    OBL_CHECK(ListedResolution(listed, 0, {800, 600}, 480).cx == 800); // no list: unchanged
 }

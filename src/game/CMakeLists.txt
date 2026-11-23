@@ -76,6 +76,11 @@ add_library(obl_common STATIC
     ui/gui_layouts.cpp
     ui/own_controls.cpp
     ui/own_controls.h
+    ui/own_sprites.cpp
+    ui/own_sprites.h
+    ui/screen_backdrop.h
+    ui/gui_touch_snap.cpp
+    ui/gui_touch_snap.h
     ui/gui_layouts.h
     map/path_tile_script.cpp
     map/path_tile_script.h
@@ -184,6 +189,9 @@ add_library(obl_common STATIC
     game/game_states.h
     game/game_states_logic.h)
 target_include_directories(obl_common PUBLIC ${CMAKE_SOURCE_DIR}/src)
+# The hand of the Controls options tab's icon (game/ui/own_sprites.cpp), OpenBeach's own drawing.
+include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/embedded_icon.cmake)
+obl_embedded_bytes(obl_common assets/ui/controls_tab_hand.png kControlsTabHand controls_tab_hand.gen.h)
 target_link_libraries(obl_common PUBLIC SDL3::SDL3-static nlohmann_json::nlohmann_json obl_core obl_formats obl_json_schema)
 # All project targets share one float contract: AVX2 scalar math, no FMA contraction
 # (/fp:precise without /fp:contract); keep external libraries on their own flags.

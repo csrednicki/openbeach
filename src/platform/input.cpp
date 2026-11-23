@@ -6,8 +6,12 @@
 #include "game/ui/input_backend.h"
 
 #include "game/game/game_accessors.h"
+#include "game/game/command.h"
+#include "game/game/command_loop.h"
+#include "game/ui/gui_touch_snap.h"
 #include "game/ui/gui_manager_dialogs.h"
 #include "game/ui/gui_manager_types.h"
+#include "game/ui/resolutions.h"
 #include "game/world/world_state.h"
 #include "core/config.h"
 #include "platform/cursor.h"
@@ -19,6 +23,7 @@
 #include "game/game/settings_store.h"
 #include "game/ui/own_controls.h"
 #include "platform/touch_gestures.h"
+#include "platform/touch_pad.h"
 #include "platform/window_placement.h"
 
 #include <windows.h>
@@ -60,6 +65,36 @@ TouchGestures g_touch;
 bool g_touchCursor;
 UnitAccumulator g_touchDragX, g_touchDragY;
 double g_touchPendingX, g_touchPendingY; // finger motion the game's camera drag has not started to take yet (client pixels)
+// Android with the Controls options' touch controls off (PadMode, touch_pad.h) reads the fingers as a D-pad and a touchpad instead
+// of the gestures.
+TouchPad g_touchPad;
+UnitAccumulator g_touchPadX, g_touchPadY;
+unsigned g_touchPadArrows; // held as the arrow keys
+bool g_padMode; // PadMode() as the fingers were last read
+int64_t g_touchButtonFinger = -1; // with the gestures: the finger on the magnifier's button, until it is up
+TwoFingerPan g_zoomPan; // with the gestures: two fingers drag the magnifier's view
+const void* g_zoomDialog; // the window the magnifier's view was last centred on
+
+// A two-finger swipe: one game speed step, 1 faster or -1 slower, within the speed buttons' 0..2 (GAME_GAME_SPEED).
+void StepGameSpeed(int step)
+{
+    const world::World* world = game::GetWorld();
+    if (!world) return;
+    const int level = std::clamp(world->m_gameSpeedLevel + step, 0, 2);
+    if (level != world->m_gameSpeedLevel) game::SubmitCommand(command::SetGameSpeed{level});
+}
+
+// A key pressed and released at once (the game reads presses per update).
+void TapKey(SDL_Scancode scancode)
+{
+    g_keys.OnKey(SdlScancodeToKeyCode(scancode), true, false);
+    g_keys.OnKey(SdlScancodeToKeyCode(scancode), false, false);
+}
+
+bool PadMode()
+{
+    return kTouchPadAvailable && game::settings_store::Exists() && !game::settings_store::Current().m_touchControls;
+}
 
 // The page locks the pointer for a right drag (web/site.js); SDL then reports motion as deltas.
 bool PagePointerLocked()
@@ -113,6 +148,12 @@ void PushEvent(uint32_t offset, uint32_t data)
 
 void RestoreSdlMousePosition()
 {
+#ifdef __ANDROID__
+    // A phone's mouse state is (0, 0): SDL makes no mouse of the fingers (SDL_HINT_TOUCH_MOUSE_EVENTS), and the touchpad keeps its
+    // own cursor, so coming back to the app put the cursor in the corner and scrolled the map to its top left. A real mouse's next
+    // motion places the cursor anyway.
+    return;
+#endif
     // The offscreen driver (hidden mode on SDL hosts) has no pointer: its state is (0, 0), which would scroll the edge.
     const char* driver = SDL_GetCurrentVideoDriver();
     if (driver && std::strcmp(driver, "offscreen") == 0) return;
@@ -338,10 +379,12 @@ void ReadSdlInputEvents(ui::Input* input)
             // Hidden posted keys have no physical keyboard focus and may carry windowID=0.
             if ((event.key.windowID != SdlGameWindowId() && !(g_hidden && event.key.windowID == 0)) || !g_queueFocused) continue;
             if (TakeFullscreenToggle(event.key)) continue;
+            ui::WakeBar(); // any action brings a centred panel back (bar_slide.h)
             g_keys.OnKey(SdlScancodeToKeyCode(event.key.scancode), event.type == SDL_EVENT_KEY_DOWN, event.key.repeat);
             continue;
         }
         if (!g_queueFocused) continue;
+        ui::WakeBar();
         if (event.type == SDL_EVENT_MOUSE_MOTION && event.motion.windowID == SdlGameWindowId()) {
             if (Dragging()) {
                 // In relative mode x/y is SDL's hidden, window-clamped position; xrel/yrel are device units. So it is under
@@ -501,7 +544,18 @@ void ApplyTouchActions()
             g_touchPendingX += action.x;
             g_touchPendingY += action.y;
             break;
+        case Kind::Zoom:
+            // A pinch is the game's zoom (the keys world_view_logic.h reads), not while the magnifier's view is dragged instead.
+            if (!g_touchPad.Magnifier()) TapKey(action.y > 0 ? SDL_SCANCODE_PAGEUP : SDL_SCANCODE_PAGEDOWN);
+            break;
+        case Kind::Speed:
+            if (!g_touchPad.Magnifier()) StepGameSpeed(action.y > 0 ? 1 : -1); // two fingers drag the magnifier's view instead
+            break;
+        case Kind::Turn: // Space turns the building or scenery being placed, as the touchpad's held finger does (ApplyTouchPad)
+            TapKey(SDL_SCANCODE_SPACE);
+            break;
         case Kind::Wheel: {
+            if (g_touchPad.Magnifier()) break; // two fingers drag the magnifier's view instead
             int whole = g_sdlWheel.Add(SdlWheelUnits(action.y, false));
             if (whole) PushEvent(input_state::kRecordWheel, static_cast<uint32_t>(whole));
             break;
@@ -517,6 +571,46 @@ void ApplyTouchActions()
     }
 }
 
+// The D-pad's arrows as the arrow keys: presses and releases for the ones that changed.
+void HoldArrows(unsigned arrows)
+{
+    constexpr struct {
+        unsigned bit;
+        int scancode;
+    } kArrows[] = {
+            {kDpadLeft, SDL_SCANCODE_LEFT}, {kDpadRight, SDL_SCANCODE_RIGHT}, {kDpadUp, SDL_SCANCODE_UP}, {kDpadDown, SDL_SCANCODE_DOWN}};
+    for (const auto& arrow : kArrows)
+        if ((arrows ^ g_touchPadArrows) & arrow.bit) g_keys.OnKey(SdlScancodeToKeyCode(arrow.scancode), (arrows & arrow.bit) != 0, false);
+    g_touchPadArrows = arrows;
+}
+
+// PadMode: the cursor stays where the fingers moved it and is drawn by the presenter (sdl_present.cpp), as on the handheld.
+void ApplyTouchPad()
+{
+    const TouchPad::Output out = g_touchPad.Take();
+    const RECT image = ClientImageRect(GameWindow(), GameSize());
+    if (image.right <= image.left || image.bottom <= image.top) return;
+    if (g_sdlMouseClient.x < 0) g_sdlMouseClient = {(image.left + image.right) / 2, (image.top + image.bottom) / 2};
+    // Kept on the picture: the bars beside it are no game position, and its edge scrolls the map like the mouse's.
+    g_sdlMouseClient = {std::clamp<LONG>(g_sdlMouseClient.x + g_touchPadX.Add(out.dx), image.left, image.right - 1),
+            std::clamp<LONG>(g_sdlMouseClient.y + g_touchPadY.Add(out.dy), image.top, image.bottom - 1)};
+    for (int i = 0; i < out.taps; ++i) {
+        PushEvent(input_state::kRecordLeft, 0x80);
+        PushEvent(input_state::kRecordLeft, 0);
+    }
+    // A held finger is the right button, or Space while a building or scenery is being placed (the handheld's X): it turns it.
+    if (out.speedSteps) StepGameSpeed(out.speedSteps);
+    for (int i = 0; i < out.holds; ++i) {
+        if (CurrentTouchAim() == TouchAim::Confirm) {
+            TapKey(SDL_SCANCODE_SPACE);
+        } else {
+            PushEvent(input_state::kRecordRight, 0x80);
+            PushEvent(input_state::kRecordRight, 0);
+        }
+    }
+    HoldArrows(g_touchPad.Arrows());
+}
+
 // SDL queues finger events with positions normalized to the window; the gestures work in client pixels, like the mouse.
 void ReadSdlTouchEvents()
 {
@@ -528,25 +622,120 @@ void ReadSdlTouchEvents()
     if (window) g_touch.SetScale(SDL_GetWindowDisplayScale(window));
 #endif
     g_touch.SetAim(CurrentTouchAim());
+    const bool pad = PadMode();
+    if (pad != g_padMode) {
+        // The Controls options switched: no finger, arrow or cursor carries over to the other controls.
+        g_padMode = pad;
+        g_touch.Cancel();
+        g_touchPad.Cancel();
+        HoldArrows(0);
+        g_sdlMouseClient = {-300, -300};
+        g_touchCursor = false;
+    }
+    if (kTouchPadAvailable && window) {
+        const SIZE game = GameSize();
+        const RECT image = ClientImageRect(GameWindow(), game);
+        // The bottom panel's left and top edges on the screen: the pad stays off the panel (DpadPlacement). A centred panel
+        // (ui::SetCenteredBar) leaves the corner beside it free. Its height stays set in the menus too, so the pad does not move
+        // between them and the game.
+        // The scenario goals stand beside a centred panel (ui::SetBarSide), as part of it.
+        const ui::GuiManager* manager = game::GetGuiManager();
+        int bar = manager ? manager->m_barHeight : 0;
+        if (manager && ui::GoalsBesideBar(game.cx) && manager->m_progressVisible) bar = std::max<int>(bar, game.cy - manager->m_progressY0);
+        const float barLeft = static_cast<float>(image.left) +
+                static_cast<float>(ui::GoalsBesideBar(game.cx) ? ui::BarSideX(game.cx) : ui::BarOffsetX(game.cx)) *
+                        static_cast<float>(image.right - image.left) / static_cast<float>(std::max<LONG>(game.cx, 1));
+        const float barTop = static_cast<float>(image.top) +
+                static_cast<float>(game.cy - bar) * static_cast<float>(image.bottom - image.top) /
+                        static_cast<float>(std::max<LONG>(game.cy, 1));
+        const DpadCircle placed = DpadPlacement(width, height, barLeft, barTop);
+        g_touchPad.SetPad(placed);
+        if (!pad) g_touchPad.SetButton(CornerButton(placed)); // the gestures keep only the magnifier, in the D-pad's corner
+        g_touchPad.SetScale(SDL_GetWindowDisplayScale(window));
+        // The Video options' cursor speed, as for the handheld's stick: its default keeps kGain.
+        const double speed = std::max<double>(game::settings_store::Current().m_cursorSpeed, kPadMinPercent);
+        g_touchPad.SetGain(TouchPad::kGain * speed / obl::settings::kDefaultCursorSpeed);
+        // The magnifier is for the game's map: none in the menus, nor while the world loads.
+        g_touchPad.SetMagnifierAllowed(game::settings_store::Current().m_magnifier != 0 && InGameplay());
+        g_touchPad.SetPicture(static_cast<float>(image.left), static_cast<float>(image.top), static_cast<float>(image.right - image.left),
+                static_cast<float>(image.bottom - image.top));
+        // Twice the size under the magnifier: a finger covers half as many game pixels (gui_touch_snap.h).
+        gui_touch_snap::SetReach(g_touchPad.Magnifier() ? gui_touch_snap::kReach / 2 : gui_touch_snap::kReach);
+        // The magnifier's view goes to the middle of a window that shows while it is on (and of the one in front when it comes on).
+        int rect[4];
+        const void* dialog = nullptr;
+        if (g_touchPad.Magnifier() && gui_touch_snap::FrontDialog(game::GetGuiManager(), rect, dialog) && dialog != g_zoomDialog) {
+            const POINT centre = MapGameToClient({(rect[0] + rect[2]) / 2, (rect[1] + rect[3]) / 2}, game, image);
+            g_touchPad.CentreZoom(static_cast<float>(centre.x), static_cast<float>(centre.y));
+        }
+        g_zoomDialog = g_touchPad.Magnifier() ? dialog : nullptr;
+    }
     // Drained even when unused (native hosts), so that the queue does not fill up.
     while (SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_EVENT_FINGER_DOWN, SDL_EVENT_FINGER_CANCELED) > 0) {
         if (!kTouchGestures || !g_queueFocused || width <= 0 || height <= 0) continue;
         if (event.type == SDL_EVENT_FINGER_CANCELED) {
+            // The system took the fingers (MIUI's three-finger gestures do): whatever they did is dropped.
+            OBL_LOG("touch: the system cancelled the fingers");
             g_touch.Cancel();
+            g_touchPad.Cancel();
+            g_touchButtonFinger = -1;
+            g_zoomPan.Clear();
             continue;
         }
         if (event.tfinger.windowID != SdlGameWindowId()) continue;
+        ui::WakeBar();
         const auto id = static_cast<int64_t>(event.tfinger.fingerID);
         const float x = event.tfinger.x * static_cast<float>(width), y = event.tfinger.y * static_cast<float>(height);
         const auto ms = static_cast<uint32_t>(event.common.timestamp / 1000000);
+        if (pad) {
+            if (event.type == SDL_EVENT_FINGER_DOWN)
+                g_touchPad.FingerDown(id, x, y, ms);
+            else if (event.type == SDL_EVENT_FINGER_MOTION)
+                g_touchPad.FingerMove(id, x, y);
+            else if (event.type == SDL_EVENT_FINGER_UP)
+                g_touchPad.FingerUp(id, x, y, ms);
+            continue;
+        }
+        // The magnifier's button only turns the zoom on or off; the other fingers work the gestures through the zoom, where the
+        // zoomed screen shows the picture.
+        if (event.type == SDL_EVENT_FINGER_DOWN && g_touchPad.OnButton(x, y)) {
+            g_touchPad.ToggleMagnifier();
+            g_touchButtonFinger = id;
+            continue;
+        }
+        if (id == g_touchButtonFinger) {
+            if (event.type == SDL_EVENT_FINGER_UP) g_touchButtonFinger = -1;
+            continue;
+        }
+        float px = x, py = y;
+        g_touchPad.ToPicture(px, py);
+        if (event.type == SDL_EVENT_FINGER_DOWN) g_zoomPan.Down(id, x, y);
+        if (event.type == SDL_EVENT_FINGER_UP) g_zoomPan.Up(id);
+        if (event.type == SDL_EVENT_FINGER_MOTION) {
+            float dx = 0, dy = 0;
+            g_zoomPan.Move(id, x, y, dx, dy);
+            if (g_touchPad.Magnifier() && (dx != 0 || dy != 0)) g_touchPad.PanZoom(dx, dy);
+        }
+        // A first finger that lands on a slider (or beside one, gui_touch_snap.h) holds the left button at once, as for painting:
+        // its drag moves the slider, not the camera.
+        if (event.type == SDL_EVENT_FINGER_DOWN && !g_touch.AnyFingerDown()) {
+            const SIZE game = GameSize();
+            const POINT at = MapClientToGame({static_cast<LONG>(px), static_cast<LONG>(py)}, game, ClientImageRect(GameWindow(), game));
+            g_touch.SetAim(gui_touch_snap::SliderNear(game::GetGuiManager(), at.x, at.y) ? TouchAim::Paint : CurrentTouchAim());
+        }
         if (event.type == SDL_EVENT_FINGER_DOWN)
-            g_touch.FingerDown(id, x, y, ms);
+            g_touch.FingerDown(id, px, py, ms);
         else if (event.type == SDL_EVENT_FINGER_MOTION)
-            g_touch.FingerMove(id, x, y, ms);
+            g_touch.FingerMove(id, px, py, ms);
         else if (event.type == SDL_EVENT_FINGER_UP)
-            g_touch.FingerUp(id, x, y, ms);
+            g_touch.FingerUp(id, px, py, ms);
     }
     if (!kTouchGestures) return;
+    if (pad) {
+        g_touchPad.Tick(static_cast<uint32_t>(SDL_GetTicks()));
+        ApplyTouchPad();
+        return;
+    }
     g_touch.Tick(static_cast<uint32_t>(SDL_GetTicks()));
     ApplyTouchActions();
 }
@@ -633,6 +822,12 @@ public:
         // Back reaches the game as Esc (input_mapping.cpp) instead of closing the activity.
         SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
 #endif
+        // The handheld's Video options (cursor and scroll speed sliders) also serve the touchpad and the D-pad, which the Controls
+        // tab of touch screens turns on.
+        if (kTouchPadAvailable) {
+            own_controls::SetPadPointer(true);
+            own_controls::SetTouchScreen(true);
+        }
 #ifdef OBL_HANDHELD
         g_padL1 = PadSetting("OBL_PAD_L1", g_padL1, g_padButtons.size());
         g_padR1 = PadSetting("OBL_PAD_R1", g_padR1, g_padButtons.size());
@@ -713,6 +908,8 @@ public:
         g_touch.Take();
         g_touchCursor = false;
         g_touchPendingX = g_touchPendingY = 0;
+        g_touchPad.Cancel();
+        g_touchPadArrows = 0; // the keys above are released too
     }
 
     bool Focused() override { return g_inputFocused; }
@@ -746,10 +943,25 @@ SdlInputBackend g_sdlBackend;
 
 bool HandheldCursor(int& x, int& y)
 {
-    if (!kHandheld || g_sdlMouseClient.x < 0) return false;
+    if ((!kHandheld && !PadMode()) || g_sdlMouseClient.x < 0) return false;
     x = g_sdlMouseClient.x;
     y = g_sdlMouseClient.y;
     return true;
+}
+
+TouchPadView CurrentTouchPadView()
+{
+    TouchPadView view;
+    if (!kTouchPadAvailable) return view;
+    if (PadMode()) { // the D-pad; the gestures have only the magnifier's button
+        view.pad = g_touchPad.Pad();
+        view.arrows = g_touchPadArrows;
+    }
+    view.button = g_touchPad.Button();
+    view.magnifier = g_touchPad.Magnifier();
+    view.magnifierButton = g_touchPad.MagnifierAllowed();
+    view.zoomed = g_touchPad.Zoom(view.zoomX, view.zoomY);
+    return view;
 }
 
 ui::SdlRelativeDragState GetSdlRelativeDragState()

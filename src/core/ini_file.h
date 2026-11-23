@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -38,5 +39,10 @@ int ReadInt(const std::filesystem::path& path, std::string_view section, std::st
 
 // WritePrivateProfileStringA(section, key, value, path): creates the file when missing. False when it cannot be written.
 bool WriteString(const std::filesystem::path& path, std::string_view section, std::string_view key, std::string_view value);
+
+// A file rewritten as a whole in one step: `write` fills `path` + ".tmp" (empty at first), which then replaces `path` (a rename).
+// A process that ends while `write` runs (Android ends a swiped-away app at once) leaves the old file whole, not a cut one whose
+// missing keys read as defaults. False, with the old file kept, when the replace fails.
+bool WriteWhole(const std::filesystem::path& path, const std::function<void(const std::filesystem::path& temporary)>& write);
 
 } // namespace obl::ini

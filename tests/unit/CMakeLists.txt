@@ -149,6 +149,8 @@ add_executable(obl_unit_tests
     input_state_test.cpp
     touch_gestures_test.cpp
     pad_pointer_test.cpp
+    touch_pad_test.cpp
+    bar_slide_test.cpp
     frame_bands_test.cpp
     sprite_slice_test.cpp
     state_helpers_test.cpp
@@ -337,6 +339,10 @@ add_executable(obl_unit_tests
     gui_layouts_test.cpp
     own_credits_test.cpp
     own_controls_test.cpp
+    own_sprites_test.cpp
+    gui_touch_snap_test.cpp
+    wide_screen_test.cpp
+    screen_backdrop_test.cpp
     convert_gui_tables_test.cpp
     convert_byte_source_test.cpp
     convert_source_test.cpp

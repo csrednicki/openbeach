@@ -193,34 +193,52 @@ bool ReadSprite(
     return true;
 }
 
+bool ReadPage(const std::filesystem::path& spritesDir, const Anim& anim, int index, std::vector<uint8_t>& bytes, std::string& error)
+{
+    const size_t w = anim.width, h = anim.height;
+    const int count = std::min(anim.framesPerPage, anim.uniqueFrames - index * anim.framesPerPage);
+    const int rows = (count + anim.columns - 1) / anim.columns;
+    const size_t size = static_cast<size_t>(anim.columns) * w * static_cast<size_t>(rows) * h * 2;
+    if (!anim.page.empty()) {
+        if (index != 0 || anim.page.size() != size) {
+            error = anim.name + ": the sheet in memory does not fit the animation";
+            return false;
+        }
+        bytes = anim.page;
+        return true;
+    }
+    const std::filesystem::path file = pack_path::ResolveIn(spritesDir, anim.sheets[index]);
+    std::vector<uint8_t> png;
+    png_read::Image page;
+    if (!ReadFile(file, png, error)) return false;
+    if (!png_read::Decode(png, page, error)) {
+        error = file.string() + ": " + error;
+        return false;
+    }
+    if (page.channels != 2 || page.bitDepth != 8 || static_cast<size_t>(page.width) != anim.columns * w ||
+            static_cast<size_t>(page.height) != rows * h) {
+        error = file.string() + ": not a gray + alpha sheet of " + std::to_string(rows) + " rows of " + std::to_string(anim.columns) +
+                " frames";
+        return false;
+    }
+    bytes = std::move(page.bytes);
+    return true;
+}
+
 bool EncodeFrames(const std::filesystem::path& spritesDir, const Anim& anim, int first, int end, uint32_t base, std::vector<uint8_t>& data,
         std::vector<uint32_t>& offsets, std::string& error)
 {
-    const size_t w = anim.width, h = anim.height;
-    std::vector<uint8_t> png, frame(w * h * 2);
-    png_read::Image page;
+    const size_t w = anim.width, h = anim.height, pageWidth = static_cast<size_t>(anim.columns) * w;
+    std::vector<uint8_t> frame(w * h * 2), page;
     int loaded = -1;
     for (int u = first; u < end; ++u) {
         const int pageIndex = u / anim.framesPerPage, i = u % anim.framesPerPage;
         if (pageIndex != loaded) {
-            const std::filesystem::path file = pack_path::ResolveIn(spritesDir, anim.sheets[pageIndex]);
-            if (!ReadFile(file, png, error)) return false;
-            if (!png_read::Decode(png, page, error)) {
-                error = file.string() + ": " + error;
-                return false;
-            }
-            const int count = std::min(anim.framesPerPage, anim.uniqueFrames - pageIndex * anim.framesPerPage);
-            const int rows = (count + anim.columns - 1) / anim.columns;
-            if (page.channels != 2 || page.bitDepth != 8 || static_cast<size_t>(page.width) != anim.columns * w ||
-                    static_cast<size_t>(page.height) != rows * h) {
-                error = file.string() + ": not a gray + alpha sheet of " + std::to_string(rows) + " rows of " +
-                        std::to_string(anim.columns) + " frames";
-                return false;
-            }
+            if (!ReadPage(spritesDir, anim, pageIndex, page, error)) return false;
             loaded = pageIndex;
         }
         const size_t x0 = static_cast<size_t>(i % anim.columns) * w, y0 = static_cast<size_t>(i / anim.columns) * h;
-        for (size_t y = 0; y < h; ++y) std::memcpy(&frame[y * w * 2], &page.bytes[((y0 + y) * page.width + x0) * 2], w * 2);
+        for (size_t y = 0; y < h; ++y) std::memcpy(&frame[y * w * 2], &page[((y0 + y) * pageWidth + x0) * 2], w * 2);
         offsets[u] = base + static_cast<uint32_t>(data.size());
         EncodeFrame(frame, anim.width, anim.height, anim.Mask(), anim.runLength, data);
     }

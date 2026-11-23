@@ -8,6 +8,7 @@
 #include "game/ui/sprite.h"
 #include "core/log.h"
 #include "game/ui/sprite_anim.h"
+#include "game/ui/own_sprites.h"
 #include "formats/sprite_pack.h"
 #include "game/ui/sprite_observer.h"
 #include "core/call_counter.h"
@@ -21,6 +22,7 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include <utility>
 #include <vector>
 #include <fcntl.h>
 
@@ -90,11 +92,16 @@ int Load(Bank* b, sprite_pack::ReadMode mode)
     const bool is555 = game::GetRenderer()->m_rgb555 != 0;
     b->m_headerFile = nullptr;
     b->m_datFile = -1;
-    b->m_spriteCount = static_cast<int32_t>(keys.size());
-    b->m_sprites = new Sprite*[keys.size()];
-    for (size_t i = 0; i < keys.size(); ++i) {
+    // OpenBeach's own sprites (own_sprites.h) follow the pack's: lookups go by name, so the order does not matter.
+    std::vector<sprite_pack::Sprite> own = own_sprites::Make(g_spritesDirectory, is555);
+    b->m_spriteCount = static_cast<int32_t>(keys.size() + own.size());
+    b->m_sprites = new Sprite*[keys.size() + own.size()];
+    for (size_t i = 0; i < keys.size() + own.size(); ++i) {
         sprite_pack::Sprite converted;
-        if (!sprite_pack::ReadSprite(g_spritesDirectory, keys[i], is555, converted, error, mode)) Failure(error.c_str());
+        if (i >= keys.size())
+            converted = std::move(own[i - keys.size()]);
+        else if (!sprite_pack::ReadSprite(g_spritesDirectory, keys[i], is555, converted, error, mode))
+            Failure(error.c_str());
         auto* s = new Sprite;
         ConstructSprite(s);
         Apply(s, converted, mode == sprite_pack::ReadMode::Metadata);

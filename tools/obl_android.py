@@ -160,10 +160,11 @@ def build_apk(args, sdk, library):
     stage = build / "apk"
     shutil.rmtree(stage, ignore_errors=True)
 
-    # Resources (strings, shortcuts, icons) and assets (the L0 demo + licences). Link first to generate R.java for javac.
+    # Resources (strings, shortcuts, icons) and assets (the L0 demo, the wide screens + licences). Link first to generate R.java for javac.
     stage_resources(stage / "res")
     run(tool(tools, "aapt2"), "compile", "--dir", stage / "res", "-o", stage / "res.zip")
     shutil.copytree(ROOT / "data" / "packs" / "l0", stage / "assets" / "l0" / "packs" / "l0")
+    shutil.copytree(ROOT / "assets" / "screens_wide", stage / "assets" / "screens_wide")
     for doc in ("LICENSE", "THIRD_PARTY_NOTICES.md"):
         shutil.copy2(ROOT / doc, stage / "assets" / doc)
     name, code = version(args.version)

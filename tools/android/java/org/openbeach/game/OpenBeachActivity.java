@@ -5,6 +5,7 @@ import android.content.res.AssetManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.system.Os;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.WindowManager;
 
@@ -59,6 +60,13 @@ public class OpenBeachActivity extends SDLActivity {
         try {
             // SDL sets the orientation from the window's size when it creates or fullscreens it, over the manifest's.
             Os.setenv("SDL_ORIENTATIONS", "LandscapeLeft LandscapeRight", true);
+            // The screen in landscape: the game builds its resolution list at its aspect before SDL's video starts
+            // (window_placement.cpp).
+            DisplayMetrics metrics = new DisplayMetrics();
+            getWindowManager().getDefaultDisplay().getRealMetrics(metrics);
+            int longSide = Math.max(metrics.widthPixels, metrics.heightPixels);
+            int shortSide = Math.min(metrics.widthPixels, metrics.heightPixels);
+            Os.setenv("OBL_SCREEN_SIZE", longSide + "x" + shortSide, true);
             if (game == null) {
                 File demoDir = new File(getFilesDir(), "l0");
                 copyDemo(demoDir);

@@ -36,10 +36,12 @@ struct Env {
     int CreditPageCount() { return creditPages; }
     float step = 0.02f;
     int button = 0, draw = 0, cursorX = 11, cursorY = 22, channel = 7;
-    bool returnToMenu = false;
+    bool returnToMenu = false, touchHelp = false;
 
     float FrameStep() { return step; }
     int LeftButton() { return button; }
+    bool TouchHelpShown() { return touchHelp; }
+    void ShowTouchHelpLoading() { log.push_back("touch help loading"); }
     void SetNextState(GameStateId id) { log.push_back("next " + std::to_string(static_cast<int>(id))); }
     void ShowDialog(const char* name) { log.push_back(std::string("dialog ") + name); }
     void ChangeResolution(int w, int h) { log.push_back("res " + std::to_string(w) + "x" + std::to_string(h)); }
@@ -167,6 +169,28 @@ OBL_TEST_CASE("game_states.load_game_hands_over_after_a_tenth_of_a_second")
     env.step = 3.0f; // no clamp: one long frame is enough
     LoadGameUpdate(state, env);
     OBL_CHECK_EQ(env.log, Log{"next 0"});
+}
+
+OBL_TEST_CASE("game_states.load_game_waits_for_a_tap_on_the_touch_help")
+{
+    Probe<LoadGameFields> state{};
+    Env env;
+    env.touchHelp = true;
+    LoadGameEnter(state);
+    env.step = 3.0f;
+    LoadGameUpdate(state, env);
+    LoadGameUpdate(state, env);
+    OBL_CHECK_EQ(env.log, Log{}); // however long the help shows
+    env.button = 2; // a finger still down from the scenario screen is no tap
+    LoadGameUpdate(state, env);
+    OBL_CHECK_EQ(env.log, Log{});
+    // The tap first shows the loading prompt for a frame (the world's load shows nothing for a while), then the load starts.
+    env.button = 1;
+    LoadGameUpdate(state, env);
+    OBL_CHECK_EQ(env.log, Log{"touch help loading"});
+    env.button = 0;
+    LoadGameUpdate(state, env);
+    OBL_CHECK_EQ(env.log, (Log{"touch help loading", "next 0"}));
 }
 
 OBL_TEST_CASE("game_states.main_menu_shows_the_menu_first_and_the_scenario_screen_after_a_game")

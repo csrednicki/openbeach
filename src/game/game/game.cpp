@@ -10,10 +10,13 @@
 #include "game/ui/palette_modifiers.h"
 #include "game/ui/music_player.h"
 #include "game/ui/renderer_api.h"
+#include "game/ui/resolutions.h"
+#include "game/ui/bar_slide.h"
 #include "game/ui/cursor.h"
 #include "game/game/diagnostics.h"
 #include "game/game/game_host.h"
 #include "game/ui/image.h"
+#include "game/ui/screen_backdrop.h"
 #include "game/ui/input.h"
 #include "core/key_code.h"
 #include "game/ui/sound_api.h"
@@ -25,6 +28,7 @@
 #include "game/ui/save_slots.h"
 #include "game/ui/font_construct.h"
 #include "game/ui/font.h"
+#include "game/ui/text_renderer.h"
 
 #include "game/game/game_accessors.h"
 #include "game/game/settings_store.h"
@@ -247,6 +251,17 @@ struct VariableEnv {
     void SetSeaEffects(uint8_t enabled) const { ui::renderer::SetSeaEffects(GetRenderer(), enabled); }
     void SetKeyline(uint8_t enabled) const { object::object_manager::SetKeyline(GetObjectManager(), enabled); }
     void SetGameSpeed(int level) const { SubmitCommand(command::SetGameSpeed{level}); }
+    // The list changes at once; in a game the resolution follows as a pick from the list would (GuiManager's request, which also
+    // stores it in the settings), else only the settings take it.
+    void SetWideScreen(bool wide) const
+    {
+        game::Settings& settings = Settings();
+        int width = settings.m_resolutionWidth, height = settings.m_resolutionHeight;
+        ui::SetWideScreen(wide, width, height);
+        settings.m_resolutionWidth = width;
+        settings.m_resolutionHeight = height;
+        if (GetWorld()) game->m_guiManager->RequestResolution(width, height);
+    }
     void PlaylistCommand(int command) const { static_cast<audio::MusicPlayer*>(MusicPlayer())->Command(command); }
 };
 void GetVariable(Game* game, const char* name, Char16* out)
@@ -377,6 +392,7 @@ void DrawFullscreenTga(Game*, const char* path)
     int position[2] = {0, 0};
     int rect[4] = {0, 0, 800, 600};
     ui::renderer::DrawImage(GetRenderer(), position, rect, image, 0, 0, 0);
+    ui::screen_backdrop::Shown(path);
     if (image) {
         ui::images::Destruct(image);
         ::operator delete(image);
@@ -402,6 +418,7 @@ void ChangeResolution(Game* game, int width, int height)
 {
     ui::Renderer* renderer = GetRenderer();
     if (renderer->m_width == width && renderer->m_height == height) return;
+    OBL_LOG("resolution: %dx%d -> %dx%d", renderer->m_width, renderer->m_height, width, height);
     if (!ui::renderer::ChangeResolution(renderer, width, height)) ShowDirectXError(game);
     InputSetScreenSize(*GetInput(), width, height);
     game->m_currentState->ChangeResolution(width, height);
@@ -585,6 +602,9 @@ void Update(Game* game)
         game->m_currentState->Enter();
         UpdateClock(&game->m_clock);
         InputClearButtonState(*GetInput());
+        // The touch help ends with LoadGame: the loading screen stays the last screen drawn, and its help must not show in the game.
+        if (game->m_currentState != game->m_states[static_cast<int>(game::GameStateId::LoadGame)].get())
+            ui::screen_backdrop::g_touchHelp = ui::screen_backdrop::g_touchHelpLoading = false;
     }
     // Bug fix: a save loads inside this one frame (main menu -> WorldTest), and the frame then ran the WorldTest update too, a
     // frame of simulation that no tick counted (a save and reload was not a no-op; found by the chaos bot's save round trip). The
@@ -670,6 +690,95 @@ void __cdecl ClipBlitRect(int* dst, int* src)
     }
 }
 
+// Video options > Frame counter (settings_store.h): the game's frames per second (GameClock::m_fps) at the top of the screen, in its
+// middle (a phone's rounded corners cut its corners off), in the GUI's title font, white on a see-through dark box. The text
+// renderer is shared with the GUI's texts, so its state comes back afterwards.
+constexpr int kFrameCounterFont = 2; // the windows' titles (Options, Load game): the GUI's largest text
+constexpr int kFrameCounterTop = 4, kFrameCounterPadding = 4;
+
+// The box: each pixel keeps 3/8 of its brightness (a quarter plus an eighth, per channel, so no channel spills into the next).
+void DarkenRect(ui::Renderer* renderer, int x, int y, int width, int height)
+{
+    x = std::max(x, 0);
+    y = std::max(y, 0);
+    width = std::min(width, renderer->m_width - x);
+    height = std::min(height, renderer->m_height - y);
+    if (width <= 0 || height <= 0) return;
+    uint16_t* bits = ui::renderer::GetBackBufferBits(renderer);
+    if (!bits) return;
+    const size_t pitch = ui::renderer::GetSurfacePitch(renderer) / 2;
+    const bool rgb555 = renderer->m_rgb555 != 0;
+    const uint16_t quarter = rgb555 ? 0x1ce7 : 0x39e7, eighth = rgb555 ? 0x0c63 : 0x18e3;
+    for (int row = y; row < y + height; ++row)
+        for (uint16_t* pixel = bits + row * pitch + x; pixel != bits + row * pitch + x + width; ++pixel)
+            *pixel = static_cast<uint16_t>(((*pixel >> 2) & quarter) + ((*pixel >> 3) & eighth));
+    ui::renderer::UnlockSurface(renderer);
+}
+
+void DrawFrameCounter(ui::GuiManager* gui)
+{
+    if (!settings_store::Current().m_fpsCounter) return;
+    ui::TextRenderer* text = gui->m_textRenderers[kFrameCounterFont];
+    if (!text || !text->m_font) return;
+    const ui::TextRenderer saved = *text;
+    Char16 line[16];
+    text16::Format(line, 16, u"%d FPS", GetGameClock()->m_fps);
+    const int screenWidth = gui->m_renderer->m_width;
+    const int width = ui::font_text::MeasureWidth(text, line), x = (screenWidth - width) / 2;
+    int height = 0;
+    for (const Char16* c = line; *c; ++c) {
+        const ui::GlyphRect& glyph = text->m_font->m_glyphs[static_cast<uint8_t>(*c)];
+        height = std::max(height, glyph.bottom - glyph.top);
+    }
+    ui::renderer::SetActiveSurface(gui->m_renderer, 0);
+    DarkenRect(gui->m_renderer, x - kFrameCounterPadding, kFrameCounterTop - kFrameCounterPadding / 2, width + 2 * kFrameCounterPadding,
+            height + kFrameCounterPadding);
+    ui::font_text::SetRect(text, 0, 0, screenWidth, gui->m_renderer->m_height);
+    ui::font_text::SetAlign(text, 0);
+    ui::font_text::SetColor(text, 0xffffff);
+    ui::font_text::SetOutlined(text, 0);
+    ui::font_text::DrawLine(text, x, kFrameCounterTop, line);
+    *text = saved;
+}
+
+// The touch gestures' help on the loading screen (screen_backdrop::TouchHelpShown, Android): a caption in the free lower part of
+// each of the picture's eight panels and a prompt over the sea, in the frame counter's font. The places come from the picture
+// (screens_wide/touchhelp.avif, 1914x822, fitted to the screen's height in wide_screen.h).
+// The panels inset by 6 pixels; the outer ones reach a little beyond the screen, so their captions stop 4 pixels from its edges.
+constexpr int kTouchHelpLeft[4] = {4, 205, 414, 623}, kTouchHelpWidth[4] = {175, 183, 183, 173};
+constexpr int kTouchHelpCaptionTop[2] = {199, 441}, kTouchHelpCaptionHeight = 52;
+constexpr int kTouchHelpPromptTop = 548;
+constexpr uint32_t kTouchHelpInk = 0x123a6e; // dark sea blue on the light panels
+constexpr const char* kTouchHelpKeys[8] = {"OBL_TOUCH_HELP_TAP", "OBL_TOUCH_HELP_DRAG", "OBL_TOUCH_HELP_HOLD", "OBL_TOUCH_HELP_SLIDER",
+        "OBL_TOUCH_HELP_SCROLL", "OBL_TOUCH_HELP_SPEED", "OBL_TOUCH_HELP_ZOOM", "OBL_TOUCH_HELP_PLACE"};
+
+void DrawTouchHelp(ui::GuiManager* gui)
+{
+    if (!ui::screen_backdrop::TouchHelpShown() || gui->m_renderer->m_width != 800 || gui->m_renderer->m_height != 600) return;
+    ui::TextRenderer* text = gui->m_textRenderers[kFrameCounterFont];
+    if (!text || !text->m_font) return;
+    const ui::TextRenderer saved = *text;
+    // The wrapped lines' step (text_renderer.h DrawWrapped), to centre a caption's lines in its space.
+    const int lineHeight = 2 - static_cast<int>(static_cast<double>(text->m_font->m_size) * -1.2000000476837158);
+    auto draw = [&](const char* key, int x, int y, int width, int height, uint32_t color) {
+        const Char16* line = ui::text_table::Lookup(key);
+        if (!line) return;
+        const int lines = ui::font_text::CountLines(text, line, static_cast<uint32_t>(width), 0);
+        ui::font_text::SetRect(text, x, y + std::max(0, (height - lines * lineHeight) / 2), width, height);
+        ui::font_text::SetColor(text, color);
+        ui::font_text::DrawWrapped(text, 0, 0, line);
+    };
+    ui::renderer::SetActiveSurface(gui->m_renderer, 0);
+    ui::font_text::SetAlign(text, 2); // centred
+    ui::font_text::SetOutlined(text, 0);
+    for (int i = 0; i < 8; ++i)
+        draw(kTouchHelpKeys[i], kTouchHelpLeft[i % 4], kTouchHelpCaptionTop[i / 4], kTouchHelpWidth[i % 4], kTouchHelpCaptionHeight,
+                kTouchHelpInk);
+    draw(ui::screen_backdrop::g_touchHelpLoading ? "OBL_TOUCH_HELP_LOADING" : "OBL_TOUCH_HELP_CONTINUE", 0, kTouchHelpPromptTop, 800,
+            2 * lineHeight, 0xffffff);
+    *text = saved;
+}
+
 // Everything the GUI draws over the presented world, in direct mode on the back buffer: an optional background capture, the mode's
 // overlay, the HUD bar with its widgets and the message balloon, radar, progress bar, the open dialogs from the last to the first, the
 // software cursor (clipped at the right and bottom edges), credits and tooltip. Mode 6 keeps only the cursor, credits and tooltip.
@@ -685,29 +794,63 @@ void DrawOverlay(ui::GuiManager* gui)
     ui::renderer::SetActiveSurface(gui->m_renderer, 0);
     gui->m_renderer->m_directMode = 1;
     if (gui->m_modeObject) gui->m_modeObject->DrawScreen();
+    // The progress bar holding the scenario's goals.
+    auto drawProgress = [gui] {
+        ui::renderer::BlitSurface(gui->m_renderer, gui->m_progressX0, gui->m_progressY0, gui->m_progressSurface);
+        if (gui->m_progressVisible && gui->m_progressBig && gui->m_progressDialog)
+            (static_cast<ui::GuiWidget*>(gui->m_progressDialog))->DrawOverlay();
+    };
+    // Beside a centred bottom panel the goals stand on its left (ui::SetBarSide) and slide with it.
+    const bool goalsBeside = ui::GoalsBesideBar(width) && gui->m_progressVisible && gui->m_mode != 2;
     if (gui->m_mode != 6) {
         if (gui->m_mode != 2) {
-            ui::renderer::BlitSurface(gui->m_renderer, 0, height - gui->m_barHeight, gui->m_barSurface);
-            if (gui->m_mainItem) (static_cast<ui::GuiWidget*>(gui->m_mainItem))->DrawOverlay();
-            if (gui->m_balloon) {
-                int ticker[4] = {gui->m_tickerLeft, gui->m_tickerTop, gui->m_tickerRight - gui->m_tickerLeft,
-                        gui->m_tickerBottom - gui->m_tickerTop};
-                ui::renderer::SetViewport(gui->m_renderer, ticker);
-                (static_cast<ui::GuiWidget*>(gui->m_balloon))->Invalidate();
-                (static_cast<ui::GuiWidget*>(gui->m_balloon))->Draw();
-                int full[4] = {0, 0, gui->m_renderer->m_width, gui->m_renderer->m_height};
-                ui::renderer::SetViewport(gui->m_renderer, full);
+            // A centred panel slides out of sight while the player is idle (ui::BarHiddenRows): a sliding one is drawn in place with
+            // everything on it, then its rows move down over the map saved from under it (bar_slide.h). The strip holds the goals
+            // beside it too.
+            const int barX = ui::BarOffsetX(width), barTop = height - gui->m_barHeight;
+            const int stripX = goalsBeside ? ui::BarSideX(width) : barX;
+            const int stripWidth = barX + ui::BarLayoutWidth(width) - stripX;
+            const int stripTop = goalsBeside ? std::min(barTop, gui->m_progressY0) : barTop;
+            const int rows = height - stripTop;
+            const int hidden = ui::BarHiddenRows(rows);
+            static std::vector<uint16_t> mapUnderBar;
+            const bool sliding = hidden > 0 && hidden < rows;
+            if (sliding) {
+                ui::renderer::SetActiveSurface(gui->m_renderer, 0); // the mode's DrawScreen may have left another
+                if (const uint16_t* bits = ui::renderer::GetBackBufferBits(gui->m_renderer)) {
+                    ui::SaveStrip(
+                            bits, ui::renderer::GetSurfacePitch(gui->m_renderer) / 2, stripX, stripTop, stripWidth, rows, mapUnderBar);
+                    ui::renderer::UnlockSurface(gui->m_renderer);
+                }
+            }
+            if (hidden < rows && goalsBeside) drawProgress();
+            if (hidden < rows) {
+                ui::renderer::BlitSurface(gui->m_renderer, barX, barTop, gui->m_barSurface);
+                if (gui->m_mainItem) (static_cast<ui::GuiWidget*>(gui->m_mainItem))->DrawOverlay();
+                if (gui->m_balloon) {
+                    int ticker[4] = {gui->m_tickerLeft, gui->m_tickerTop, gui->m_tickerRight - gui->m_tickerLeft,
+                            gui->m_tickerBottom - gui->m_tickerTop};
+                    ui::renderer::SetViewport(gui->m_renderer, ticker);
+                    (static_cast<ui::GuiWidget*>(gui->m_balloon))->Invalidate();
+                    (static_cast<ui::GuiWidget*>(gui->m_balloon))->Draw();
+                    int full[4] = {0, 0, gui->m_renderer->m_width, gui->m_renderer->m_height};
+                    ui::renderer::SetViewport(gui->m_renderer, full);
+                }
+            }
+            if (sliding && mapUnderBar.size() == static_cast<size_t>(stripWidth) * static_cast<size_t>(rows)) {
+                ui::renderer::SetActiveSurface(gui->m_renderer, 0);
+                if (uint16_t* bits = ui::renderer::GetBackBufferBits(gui->m_renderer)) {
+                    ui::SlideStrip(bits, ui::renderer::GetSurfacePitch(gui->m_renderer) / 2, stripX, stripTop, stripWidth, rows, hidden,
+                            mapUnderBar);
+                    ui::renderer::UnlockSurface(gui->m_renderer);
+                }
             }
         }
         if (gui->m_radarEnabled) {
             ui::renderer::BlitSurface(gui->m_renderer, gui->m_panelX0, gui->m_panelY0, gui->m_radarSurface);
             gui->DrawRadar();
         }
-        if (gui->m_progressVisible) {
-            ui::renderer::BlitSurface(gui->m_renderer, gui->m_progressX0, gui->m_progressY0, gui->m_progressSurface);
-            if (gui->m_progressVisible && gui->m_progressBig && gui->m_progressDialog)
-                (static_cast<ui::GuiWidget*>(gui->m_progressDialog))->DrawOverlay();
-        }
+        if (gui->m_progressVisible && !goalsBeside) drawProgress();
         // A reverse walk: the sentinel is read once, the first node again before every step (a draw may open or close a dialog).
         for (ui::GuiManagerDialogNode* it = gui->m_dialogs; it != gui->m_dialogs->m_next; it = it->m_previous) {
             ui::GuiManagerDialogEntry* entry = it->m_previous->m_entry;
@@ -745,6 +888,8 @@ void DrawOverlay(ui::GuiManager* gui)
     }
     if (gui->m_credits) gui::CreditsDraw(reinterpret_cast<ui::GuiCredits*>(gui->m_credits));
     static_cast<ui::GuiTooltip*>(gui->m_tooltip)->Draw();
+    DrawTouchHelp(gui);
+    DrawFrameCounter(gui);
     gui->m_renderer->m_directMode = 0;
 }
 

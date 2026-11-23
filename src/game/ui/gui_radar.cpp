@@ -11,6 +11,7 @@
 #include "game/ui/gui_definitions.h"
 #include "game/game/game_accessors.h"
 #include "game/ui/gui_radar.h"
+#include "game/ui/resolutions.h"
 #include "game/ui/font.h"
 #include "game/ui/gui_manager_types.h"
 #include "game/ui/gui_types.h"
@@ -23,6 +24,7 @@
 #include "game/tables/world_params_tables.h"
 #include "core/call_counter.h"
 
+#include <algorithm>
 #include <cstring>
 #include "game/ui/map_view_access.h"
 
@@ -225,20 +227,33 @@ Progress* ProgressGui()
     return game::GetGuiManager();
 }
 
-void SetProgressOrigin(Progress* gui, int y)
+void SetProgressOrigin(Progress* gui, int x, int y)
 {
-    obl::ui::renderer::SetSurfaceOrigin(gui->m_renderer, gui->m_progressSurface, 9, y);
+    obl::ui::renderer::SetSurfaceOrigin(gui->m_renderer, gui->m_progressSurface, x, y);
 }
 
 int ProgressY(const Progress* gui)
 {
     const auto* renderer = static_cast<const ui::Renderer*>(gui->m_renderer);
+    // Beside a centred bottom panel (ui::SetCenteredBar) its top is the panel's (it would not leave the screen: the 640 panel is
+    // lower than it).
+    if (ui::GoalsBesideBar(renderer->m_width) && gui->m_progressSprite) {
+        const int bar = gui->m_barHeight ? gui->m_barHeight : ui::BarHeight(renderer->m_width);
+        return renderer->m_height - std::max(bar, SpriteHeight(gui->m_progressSprite));
+    }
     return ProgressBarY(static_cast<uint32_t>(renderer->m_width), static_cast<uint32_t>(renderer->m_height));
+}
+
+constexpr int kGoalsGap = 20; // between the goals and a centred bottom panel
+
+int ProgressX(const Progress* gui)
+{
+    const int width = static_cast<const ui::Renderer*>(gui->m_renderer)->m_width;
+    return ui::GoalsBesideBar(width) ? ui::BarSideX(width) : 9;
 }
 
 void CreateProgressBar(Progress* gui)
 {
-    const int y = ProgressY(gui);
     gui->m_progressDialog = nullptr;
     gui->m_progressVisible = 0;
     gui->m_progressBig = 1;
@@ -246,12 +261,15 @@ void CreateProgressBar(Progress* gui)
     auto* sprite = static_cast<ui::SpriteInstance*>(
             (static_cast<ui::SpriteBank*>(ui::GetSpriteBank()))->CreateInstance(gui_data::g_ProgressPanelDownSprite));
     gui->m_progressSprite = sprite;
-    gui->m_progressX0 = 9;
+    // Before the bottom panel's script lays out beside it, kGoalsGap to its left.
+    if (ui::CenteredBar()) ui::SetBarSide(SpriteWidth(sprite) + kGoalsGap);
+    const int x = ProgressX(gui), y = ProgressY(gui);
+    gui->m_progressX0 = x;
     gui->m_progressY0 = y;
 
-    gui->m_progressX1 = SpriteHeight(sprite) + 9;
+    gui->m_progressX1 = SpriteHeight(sprite) + x;
     gui->m_progressY1 = SpriteWidth(sprite) + y;
-    SetProgressOrigin(gui, y);
+    SetProgressOrigin(gui, x, y);
     auto* button = button_facade::Construct(new ui::GuiButton(), gui->m_progressX0 + 4, gui->m_progressY0 + 0x45, gui->m_progressX1,
             gui->m_progressY1, gui_data::g_ProgressDownButtonGraphic, gui_data::kButtonNoText, gui_data::kToggleProgressSizeAction,
             gui_data::kButtonNoText);
@@ -268,8 +286,14 @@ void RelayoutProgressBar(Progress* gui)
     const int y = ProgressY(gui);
     gui->m_progressY0 = y;
     gui->m_progressY1 = SpriteWidth(gui->m_progressSprite) + y;
-    SetWidgetPosition(gui->m_progressButton, Bounds(gui->m_progressButton).x0, y + 0x45);
-    SetProgressOrigin(gui, y);
+    int x = gui->m_progressX0;
+    if (ui::CenteredBar()) { // the centred panel moved with the screen's width: the goals follow it
+        x = ProgressX(gui);
+        gui->m_progressX1 += x - gui->m_progressX0;
+        gui->m_progressX0 = x;
+    }
+    SetWidgetPosition(gui->m_progressButton, x + 4, y + 0x45);
+    SetProgressOrigin(gui, x, y);
 }
 
 void SetProgressDialog(Progress* gui, const char* name)

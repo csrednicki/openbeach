@@ -5,6 +5,7 @@
 #include "game/ui/gui_manager_types.h"
 #include "game/ui/gui_containers_types.h"
 #include "game/ui/renderer_types.h"
+#include "game/ui/resolutions.h"
 #include "game/ui/sprite.h"
 #include "game/world/world_state.h"
 
@@ -78,9 +79,15 @@ inline void HideProgressBar(View* manager)
     manager->m_progressVisible = 0;
 }
 
+// The HUD bar takes the mouse outside camera mode, unless a centred bar is out of sight or sliding (ui::BarHiddenRows).
+inline bool MainItemTakesMouse(const View* manager)
+{
+    return manager->m_mainItem && manager->m_mode != kCameraMode && ui::BarHiddenRows(manager->m_barHeight) == 0;
+}
+
 template<class Env> bool IsMainItemHovered(Env& env, View* manager)
 {
-    return manager->m_mainItem && manager->m_mode != kCameraMode && env.WidgetHovered(manager->m_mainItem);
+    return MainItemTakesMouse(manager) && env.WidgetHovered(manager->m_mainItem);
 }
 
 // Any active dialog under the cursor, then the HUD bar (not in camera mode), then the radar panel (only when asked) and the progress bar.
@@ -217,33 +224,19 @@ template<class Env> void UpdateProgressBarMouse(Env& env, View* manager, int x, 
 {
     manager->m_progressHovered = 0;
     if (!manager->m_progressVisible) return;
+    if (ui::CenteredBar() && ui::BarHiddenRows(manager->m_barHeight) != 0) return; // beside the centred panel, out of sight with it
     if (x <= manager->m_progressX1 && manager->m_progressX0 <= x && y <= manager->m_progressY1 && manager->m_progressY0 <= y)
         manager->m_progressHovered = 1;
     env.WidgetMouse(manager->m_progressButton, x, y, state);
     if (manager->m_progressDialog) env.WidgetMouse(manager->m_progressDialog, x, y, state);
 }
 
-// One frame of mouse input. The wheel goes to the front dialog (if active) or else the mode object. Then the active dialogs get the left
-// button front to back until one takes it; a hovered or modal dialog makes every later receiver see state 3 for both buttons. A dialog
-// that took the click moves to the front unless any dialog in the list is modal. The HUD bar (not in camera mode), the radar, the progress
-// bar and finally the mode object (only when nobody took the click) follow.
-template<class Env> void UpdateMouse(Env& env, View* manager)
+// The buttons of one frame of mouse input: the active dialogs get the left button front to back until one takes it; a hovered or modal
+// dialog makes every later receiver see state 3 for both buttons. A dialog that took the click moves to the front unless any dialog in
+// the list is modal. The HUD bar (not in camera mode), the radar, the progress bar and finally the mode object (only when nobody took
+// the click) follow.
+template<class Env> void DispatchButtons(Env& env, View* manager, int x, int y, int left, int right)
 {
-    const int x = env.CursorX();
-    const int y = env.CursorY();
-    const int wheel = env.Wheel();
-    int left = env.LeftButton();
-    int right = env.RightButton();
-    if (wheel != 0) {
-        Node* first = manager->m_dialogs->m_next;
-        bool taken = false;
-        if (first != manager->m_dialogs && first->m_entry->m_state == kActiveDialog) {
-            manager->m_variableProvider = first->m_entry->m_provider;
-            taken = env.DialogWheel(first->m_entry->m_dialog, x, y, wheel);
-        }
-        if (!taken && manager->m_modeObject) env.ModeWheel(manager->m_modeObject, x, y, wheel);
-    }
-
     bool taken = false, modal = false;
     Node* hit = nullptr;
     for (Node* node = manager->m_dialogs->m_next; node != manager->m_dialogs; node = node->m_next) {
@@ -264,11 +257,36 @@ template<class Env> void UpdateMouse(Env& env, View* manager)
         if (!anyModal) env.MoveDialogToFront(manager, hit);
     }
 
-    if (manager->m_mode != kCameraMode && manager->m_mainItem && !taken) taken = env.WidgetMouseLeft(manager->m_mainItem, x, y, left);
-    if (manager->m_mode != kCameraMode && manager->m_mainItem) env.WidgetMouseRight(manager->m_mainItem, x, y, right);
+    if (MainItemTakesMouse(manager) && !taken) taken = env.WidgetMouseLeft(manager->m_mainItem, x, y, left);
+    if (MainItemTakesMouse(manager)) env.WidgetMouseRight(manager->m_mainItem, x, y, right);
     env.RadarMouse(manager, x, y, left);
     env.ProgressBarMouse(manager, x, y, left);
     if (manager->m_modeObject && !taken) env.ModeMouse(manager->m_modeObject, x, y, left, right);
+}
+
+// One frame of mouse input. The wheel goes to the front dialog (if active) or else the mode object, then the buttons (DispatchButtons).
+// On a touch screen the cursor may be moved onto a control beside the finger (gui_touch_snap.h), and a press that starts there is
+// preceded by a pass without buttons at the same place: a control takes a press only after the cursor hovered it (a button's state 2,
+// gui_controls::ButtonMouse), which a mouse always gives it on the way and a finger, landing at once, does not.
+template<class Env> void UpdateMouse(Env& env, View* manager)
+{
+    int x = env.CursorX();
+    int y = env.CursorY();
+    const int wheel = env.Wheel();
+    const int left = env.LeftButton();
+    const int right = env.RightButton();
+    const bool landing = env.TouchSnap(manager, x, y, left, right);
+    if (wheel != 0) {
+        Node* first = manager->m_dialogs->m_next;
+        bool taken = false;
+        if (first != manager->m_dialogs && first->m_entry->m_state == kActiveDialog) {
+            manager->m_variableProvider = first->m_entry->m_provider;
+            taken = env.DialogWheel(first->m_entry->m_dialog, x, y, wheel);
+        }
+        if (!taken && manager->m_modeObject) env.ModeWheel(manager->m_modeObject, x, y, wheel);
+    }
+    if (landing) DispatchButtons(env, manager, x, y, 0, 0);
+    DispatchButtons(env, manager, x, y, left, right);
 }
 
 // ---- Credits ----
@@ -414,7 +432,7 @@ template<class Env> void SizeBar(Env& env, View* manager, ui::Renderer* renderer
 {
     if (manager->m_mode == kNoGuiMode) return;
     const bool wide = static_cast<uint32_t>(renderer->m_width) >= kWideScreenWidth;
-    manager->m_barHeight = wide ? 0x5e : 0x4b;
+    manager->m_barHeight = ui::BarHeight(renderer->m_width);
     env.SetGuiBarHeight(renderer, wide ? 0x58 : 0x46);
 }
 
@@ -424,9 +442,10 @@ template<class Env> void SyncBarSurfaces(Env& env, View* manager)
 {
     auto* renderer = static_cast<ui::Renderer*>(manager->m_renderer);
     SizeBar(env, manager, renderer);
-    if (!env.ResizeSurface(renderer, manager->m_barSurface, renderer->m_width, manager->m_barHeight)) return;
+    // A centred panel (ui::SetCenteredBar) is a surface of its own width in the middle, so the map shows beside it.
+    if (!env.ResizeSurface(renderer, manager->m_barSurface, ui::BarLayoutWidth(renderer->m_width), manager->m_barHeight)) return;
     env.ClearSurface(renderer, manager->m_barSurface);
-    env.SetSurfaceOrigin(renderer, manager->m_barSurface, 0, renderer->m_height - manager->m_barHeight);
+    env.SetSurfaceOrigin(renderer, manager->m_barSurface, ui::BarOffsetX(renderer->m_width), renderer->m_height - manager->m_barHeight);
     for (int surface : {manager->m_cursorSurface, manager->m_radarSurface, manager->m_progressSurface}) {
         env.RecreateSurface(renderer, surface);
         env.ClearSurface(renderer, surface);
@@ -716,8 +735,8 @@ template<class Env> bool CreateBarSurfaces(Env& env, View* manager)
 {
     auto* renderer = static_cast<ui::Renderer*>(manager->m_renderer);
     SizeBar(env, manager, renderer);
-    manager->m_barSurface = NewClearedSurface(env, renderer, renderer->m_width, manager->m_barHeight);
-    env.SetSurfaceOrigin(renderer, manager->m_barSurface, 0, renderer->m_height - manager->m_barHeight);
+    manager->m_barSurface = NewClearedSurface(env, renderer, ui::BarLayoutWidth(renderer->m_width), manager->m_barHeight);
+    env.SetSurfaceOrigin(renderer, manager->m_barSurface, ui::BarOffsetX(renderer->m_width), renderer->m_height - manager->m_barHeight);
     manager->m_cursorSurface = NewClearedSurface(env, renderer, kCursorSurfaceSize, kCursorSurfaceSize);
     int width, height;
     ui::SpriteInstance* sprite = env.CreateSprite(env.RadarPanelSpriteName());

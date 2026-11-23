@@ -13,6 +13,7 @@
 #include "game/ui/input_types.h"
 #include "game/game/world_test_state.h"
 #include "game/ui/gui_layouts_runtime.h"
+#include "game/ui/screen_backdrop.h"
 #include "game/ui/media_files.h"
 #include "game/game/game_states.h"
 #include "game/ui/gui_content_runtime.h"
@@ -81,6 +82,8 @@ public:
 
     float FrameStep() { return GetGameClock()->m_deltaTime; }
     int LeftButton() { return GetInput()->m_leftButton; }
+    bool TouchHelpShown() { return ui::screen_backdrop::TouchHelpShown(); }
+    void ShowTouchHelpLoading() { ui::screen_backdrop::g_touchHelpLoading = true; }
     void SetNextState(game::GameStateId id) { game_api::SetNextState(static_cast<int>(id)); }
     void ShowDialog(const char* name) { static_cast<ui::GuiManager*>(Gui())->ShowDialog(name, nullptr, false); }
     void ChangeResolution(int width, int height) { game_api::ChangeResolution(width, height); }

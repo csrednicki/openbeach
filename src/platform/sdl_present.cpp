@@ -20,6 +20,19 @@
 #include "platform/frame_share.h"
 #include "platform/input.h"
 #endif
+#ifdef __ANDROID__
+#include "platform/arrow_cursor.h"
+#include "platform/cursor.h"
+#include "platform/input.h"
+#include "platform/touch_pad.h"
+#include "platform/wide_screen.h"
+#include "game/game/settings_store.h"
+#include "game/ui/screen_backdrop.h"
+
+#include <dlfcn.h>
+#include <memory>
+#include <string>
+#endif
 #include "core/log.h"
 #include "core/platform_main.h"
 #include "openbeach_icon.gen.h"
@@ -32,7 +45,9 @@
 #endif
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
+#include <cstdio>
 #include <cstring>
 #include <vector>
 
@@ -253,6 +268,313 @@ void Verify(const uint16_t* bits, int pitch, int width, int height, const SDL_FR
             dst.h, pixels, mismatches);
 }
 
+#ifdef __ANDROID__
+constexpr float kPi = 3.14159265f;
+
+// A filled slice of a circle from angle `from` to `to` (radians, clockwise from the right). 128 edges for a whole circle: at the
+// pad's radius of about 200 pixels the polygon stays within a tenth of a pixel of the round edge.
+void FillSlice(float x, float y, float radius, float from, float to, SDL_FColor color)
+{
+    constexpr int kCircleSteps = 128;
+    const int steps = std::clamp(static_cast<int>(std::ceil(kCircleSteps * (to - from) / (2 * kPi))), 1, kCircleSteps);
+    SDL_Vertex vertices[kCircleSteps + 2];
+    int indices[kCircleSteps * 3];
+    vertices[0] = {{x, y}, color, {0, 0}};
+    for (int i = 0; i <= steps; ++i) {
+        const float angle = from + (to - from) * static_cast<float>(i) / static_cast<float>(steps);
+        vertices[i + 1] = {{x + radius * std::cos(angle), y + radius * std::sin(angle)}, color, {0, 0}};
+    }
+    for (int i = 0; i < steps; ++i) {
+        indices[3 * i] = 0;
+        indices[3 * i + 1] = i + 1;
+        indices[3 * i + 2] = i + 2;
+    }
+    SDL_RenderGeometry(g_renderer, nullptr, vertices, steps + 2, indices, steps * 3);
+}
+
+void FillDisc(const DpadCircle& circle, SDL_FColor color)
+{
+    FillSlice(circle.x, circle.y, circle.radius, 0, 2 * kPi, color);
+}
+
+// A convex polygon of up to four corners (an arrow, the magnifier's handle).
+void FillConvex(const SDL_FPoint* points, int count, SDL_FColor color)
+{
+    SDL_Vertex vertices[4];
+    int indices[6];
+    for (int i = 0; i < count; ++i) vertices[i] = {points[i], color, {0, 0}};
+    for (int i = 0; i + 2 < count; ++i) {
+        indices[3 * i] = 0;
+        indices[3 * i + 1] = i + 1;
+        indices[3 * i + 2] = i + 2;
+    }
+    SDL_RenderGeometry(g_renderer, nullptr, vertices, count, indices, 3 * (count - 2));
+}
+
+// A light rim around a dark body, as the D-pad and the magnifier's button share; `lit` turns the body blue.
+void DrawControl(const DpadCircle& circle, bool lit)
+{
+    FillDisc(circle, {0.85f, 0.95f, 1.0f, 0.4f});
+    FillDisc({circle.x, circle.y, circle.radius - std::max(3.0f, 0.07f * circle.radius)},
+            lit ? SDL_FColor{0.1f, 0.4f, 0.7f, 0.8f} : SDL_FColor{0.04f, 0.09f, 0.15f, 0.6f});
+}
+
+// The magnifier's button: a glass with a plus and its handle, the handle pointing to the lower right.
+void DrawMagnifierButton(const DpadCircle& button, bool on)
+{
+    DrawControl(button, on);
+    const SDL_FColor icon = on ? SDL_FColor{1, 1, 1, 0.95f} : SDL_FColor{0.75f, 0.87f, 1.0f, 0.75f};
+    const float r = button.radius;
+    const DpadCircle glass{button.x - 0.12f * r, button.y - 0.12f * r, 0.42f * r};
+    const float d = 0.7071f; // the handle's direction, 45 degrees
+    const float from = 0.9f * glass.radius, to = glass.radius + 0.42f * r, half = 0.09f * r;
+    const SDL_FPoint handle[4] = {{glass.x + d * (from - half), glass.y + d * (from + half)},
+            {glass.x + d * (from + half), glass.y + d * (from - half)}, {glass.x + d * (to + half), glass.y + d * (to - half)},
+            {glass.x + d * (to - half), glass.y + d * (to + half)}};
+    FillConvex(handle, 4, icon);
+    FillDisc(glass, icon);
+    // The glass's inside is opaque, so the ring stays a ring over the translucent body.
+    FillDisc({glass.x, glass.y, 0.76f * glass.radius}, on ? SDL_FColor{0.1f, 0.4f, 0.7f, 1} : SDL_FColor{0.04f, 0.09f, 0.15f, 1});
+    const float arm = 0.48f * glass.radius, thick = 0.07f * r;
+    SDL_SetRenderDrawColorFloat(g_renderer, icon.r, icon.g, icon.b, icon.a);
+    const SDL_FRect plus[2] = {{glass.x - arm, glass.y - thick, 2 * arm, 2 * thick}, {glass.x - thick, glass.y - arm, 2 * thick, 2 * arm}};
+    SDL_RenderFillRects(g_renderer, plus, 2);
+}
+
+// The magnifier's zoom: the quarter of the texture around the zoom's centre, which the picture shows twice the size.
+SDL_FRect ZoomSource(const SDL_FRect& picture, const TouchPadView& view, int width, int height)
+{
+    const float kx = static_cast<float>(width) / picture.w, ky = static_cast<float>(height) / picture.h;
+    return {(view.zoomX - picture.x - picture.w / 4) * kx, (view.zoomY - picture.y - picture.h / 4) * ky, width / 2.0f, height / 2.0f};
+}
+
+// The D-pad and touchpad controls over the frame (touch_pad.h, Android with the touch controls off): the arrow cursor at the
+// picture's scale (Android shows no pointer for fingers; zoomed with the picture), a round D-pad whose held arrows and their
+// quarter light up, the magnifier's button.
+void DrawTouchPad(const SDL_FRect& picture, int gameWidth, const TouchPadView& view)
+{
+    SDL_SetRenderDrawBlendMode(g_renderer, SDL_BLENDMODE_BLEND);
+    int cursorX = 0, cursorY = 0;
+    if (HandheldCursor(cursorX, cursorY) && LocalCursorVisible() && gameWidth > 0) {
+        float x = static_cast<float>(cursorX), y = static_cast<float>(cursorY), scale = picture.w / static_cast<float>(gameWidth);
+        if (view.zoomed) {
+            x = picture.x + picture.w / 2 + 2 * (x - view.zoomX);
+            y = picture.y + picture.h / 2 + 2 * (y - view.zoomY);
+            scale *= 2;
+        }
+        SDL_FRect outline[17 * 12], fill[17 * 12];
+        int outlines = 0, fills = 0;
+        for (int row = 0; row < 17; ++row)
+            for (int column = 0; column < 12; ++column) {
+                const SDL_FRect pixel{x + column * scale, y + row * scale, scale, scale};
+                if (kArrow[row][column] == 'X') outline[outlines++] = pixel;
+                if (kArrow[row][column] == '.') fill[fills++] = pixel;
+            }
+        SDL_SetRenderDrawColor(g_renderer, 0, 0, 0, 255);
+        SDL_RenderFillRects(g_renderer, outline, outlines);
+        SDL_SetRenderDrawColor(g_renderer, 255, 255, 255, 255);
+        SDL_RenderFillRects(g_renderer, fill, fills);
+    }
+    if (view.magnifierButton && view.button.radius > 0) DrawMagnifierButton(view.button, view.magnifier);
+    const DpadCircle& pad = view.pad;
+    if (pad.radius <= 0) return;
+    DrawControl(pad, false);
+    const float inner = 0.93f * pad.radius;
+    constexpr struct {
+        unsigned bit;
+        float angle;
+    } kArrows[] = {{kDpadRight, 0}, {kDpadDown, kPi / 2}, {kDpadLeft, kPi}, {kDpadUp, -kPi / 2}};
+    for (const auto& arrow : kArrows) {
+        const bool on = (view.arrows & arrow.bit) != 0;
+        if (on) FillSlice(pad.x, pad.y, inner, arrow.angle - kPi / 4, arrow.angle + kPi / 4, {0.6f, 0.85f, 1.0f, 0.3f});
+        const float c = std::cos(arrow.angle), s = std::sin(arrow.angle);
+        const float tip = 0.8f * pad.radius, base = 0.48f * pad.radius, half = 0.2f * pad.radius;
+        const SDL_FPoint triangle[3] = {{pad.x + c * tip, pad.y + s * tip}, {pad.x + c * base - s * half, pad.y + s * base + c * half},
+                {pad.x + c * base + s * half, pad.y + s * base - c * half}};
+        FillConvex(triangle, 3, on ? SDL_FColor{1, 1, 1, 0.95f} : SDL_FColor{0.75f, 0.87f, 1.0f, 0.65f});
+    }
+}
+#endif
+
+#ifdef __ANDROID__
+// The wide (21:9) versions of the full-screen pictures (wide_screen.h), from the APK's assets (screens_wide/<key>.avif): the image
+// loader takes their part under the 800x600 screen instead of the original screen (image.cpp), and the presenter draws the whole
+// picture at the same place behind the frame, so it fills the bars beside it; where the frame still shows that part it is drawn in
+// the picture's full colours, not the frame's 16 bits (FullColourFrame). Android decodes AVIF (AImageDecoder: API 30, AVIF from
+// Android 12); libjnigraphics is opened at run time because the APK starts at API 26. Without it the original screens show with
+// black bars, as do gameplay and the intro movie (intro_movie.cpp).
+constexpr int kScreenWidth = 800, kScreenHeight = 600; // the screens' size, which the wide part covers
+
+// A wide picture, decoded once for the image loader and the presenter: its pixels and its part under the screen (SampleWide), in
+// full colour and in the frame's 16 bits.
+struct WidePicture {
+    std::string key;
+    bool rgb555 = false;
+    int width = 0, height = 0;
+    std::vector<uint8_t> rgba;
+    std::vector<uint32_t> part;
+    std::vector<uint16_t> part16;
+};
+std::shared_ptr<const WidePicture> g_lastWide; // the last one decoded: the image loader's screen is the presenter's next
+
+SDL_Texture* g_wide;
+std::string g_wideKey; // the screen g_wide shows, or the one that has no wide version
+std::shared_ptr<const WidePicture> g_shownWide; // g_wide's picture
+SDL_Texture* g_fullColour; // the frame in full colour
+std::vector<uint32_t> g_fullColourPixels;
+
+void DropWide()
+{
+    if (g_wide) SDL_DestroyTexture(g_wide);
+    if (g_fullColour) SDL_DestroyTexture(g_fullColour);
+    g_wide = g_fullColour = nullptr;
+    g_wideKey.clear();
+    g_shownWide.reset();
+}
+
+// RGBA pixels of an AVIF file, or empty.
+std::vector<uint8_t> DecodeAvif(const void* data, size_t size, int& width, int& height)
+{
+    struct Decoder;
+    struct Header;
+    using Create = int (*)(const void*, size_t, Decoder**);
+    using GetHeader = const Header* (*)(const Decoder*);
+    using GetSize = int32_t (*)(const Header*);
+    using GetStride = size_t (*)(Decoder*);
+    using Decode = int (*)(Decoder*, void*, size_t, size_t);
+    using Delete = void (*)(Decoder*);
+    static void* library = dlopen("libjnigraphics.so", RTLD_NOW);
+    if (!library) return {};
+    const auto create = reinterpret_cast<Create>(dlsym(library, "AImageDecoder_createFromBuffer"));
+    const auto header = reinterpret_cast<GetHeader>(dlsym(library, "AImageDecoder_getHeaderInfo"));
+    const auto getWidth = reinterpret_cast<GetSize>(dlsym(library, "AImageDecoderHeaderInfo_getWidth"));
+    const auto getHeight = reinterpret_cast<GetSize>(dlsym(library, "AImageDecoderHeaderInfo_getHeight"));
+    const auto stride = reinterpret_cast<GetStride>(dlsym(library, "AImageDecoder_getMinimumStride"));
+    const auto decode = reinterpret_cast<Decode>(dlsym(library, "AImageDecoder_decodeImage"));
+    const auto destroy = reinterpret_cast<Delete>(dlsym(library, "AImageDecoder_delete"));
+    Decoder* decoder = nullptr;
+    if (!create || !header || !getWidth || !getHeight || !stride || !decode || !destroy || create(data, size, &decoder) != 0) return {};
+    width = getWidth(header(decoder));
+    height = getHeight(header(decoder));
+    const size_t pitch = stride(decoder); // RGBA_8888, the decoder's default
+    std::vector<uint8_t> pixels(pitch * static_cast<size_t>(height));
+    const bool ok =
+            width > 0 && height > 0 && pitch == static_cast<size_t>(width) * 4 && decode(decoder, pixels.data(), pitch, pixels.size()) == 0;
+    destroy(decoder);
+    if (!ok) pixels.clear();
+    return pixels;
+}
+
+// The RGBA pixels of a screen's wide version, or empty.
+std::vector<uint8_t> LoadWide(const std::string& key, int& width, int& height)
+{
+    if (!FindWidePlacement(key)) return {};
+    size_t size = 0;
+    void* file = SDL_LoadFile(("screens_wide/" + key + ".avif").c_str(), &size);
+    if (!file) return {};
+    std::vector<uint8_t> pixels = DecodeAvif(file, size, width, height);
+    SDL_free(file);
+    if (pixels.empty()) OBL_LOG("present: screens_wide/%s.avif not decoded, the original screen stays", key.c_str());
+    return pixels;
+}
+
+// The wide picture of a screen, or null.
+std::shared_ptr<const WidePicture> DecodeWide(const std::string& key, bool rgb555)
+{
+    if (g_lastWide && g_lastWide->key == key && g_lastWide->rgb555 == rgb555) return g_lastWide;
+    auto picture = std::make_shared<WidePicture>();
+    picture->key = key;
+    picture->rgb555 = rgb555;
+    picture->rgba = LoadWide(key, picture->width, picture->height);
+    if (picture->rgba.empty()) return nullptr;
+    picture->part.resize(static_cast<size_t>(kScreenWidth) * kScreenHeight);
+    SampleWide(picture->rgba.data(), picture->width, picture->height, *FindWidePlacement(key), picture->part.data(), kScreenWidth,
+            kScreenHeight);
+    picture->part16.resize(picture->part.size());
+    std::transform(picture->part.begin(), picture->part.end(), picture->part16.begin(),
+            [rgb555](uint32_t colour) { return To16(colour, rgb555); });
+    g_lastWide = picture;
+    return picture;
+}
+
+// The picture a screen shows: the touch help in place of a loading screen while it is on (screen_backdrop::g_touchHelp).
+std::string WideKey(const std::string& screen)
+{
+    return ui::screen_backdrop::g_touchHelp && ui::screen_backdrop::IsLoadingScreen(screen) ? "touchhelp" : screen;
+}
+
+// screen_backdrop::g_wideScreen: the wide version's part under the screen. A loading screen shows the touch help with the touch
+// gestures (the D-pad and touchpad have other gestures).
+bool WideScreenPart(
+        const std::string& screen, bool rgb555, int width, int height, std::vector<uint16_t>& pixels, int& pictureX, int& pictureY)
+{
+    namespace backdrop = ui::screen_backdrop;
+    const bool help =
+            backdrop::IsLoadingScreen(screen) && game::settings_store::Exists() && game::settings_store::Current().m_touchControls != 0;
+    const std::string key = help ? "touchhelp" : screen;
+    const std::shared_ptr<const WidePicture> picture = DecodeWide(key, rgb555);
+    if (backdrop::IsLoadingScreen(screen)) backdrop::g_touchHelp = help && picture;
+    if (!picture || width != kScreenWidth || height != kScreenHeight) return false;
+    pixels = picture->part16;
+    pictureX = FindWidePlacement(key)->pictureX;
+    pictureY = FindWidePlacement(key)->pictureY;
+    return true;
+}
+
+[[maybe_unused]] const bool g_wideScreenSet = (ui::screen_backdrop::g_wideScreen = &WideScreenPart, true);
+
+// The wide version of the screen on show behind the picture (`frameWidth` game pixels wide), where its part in the frame lies; the
+// rows a picture leaves above or below repeat its edge rows; only while the frame shows that part (ShowsWidePart: the menus and
+// the loading screens, not the game, even while the world loads). Answers the frame in full colour, or null to show the frame as it
+// is.
+SDL_Texture* DrawWideBackdrop(const SDL_FRect& picture, const uint16_t* bits, int pitch, int frameWidth, int frameHeight, bool rgb555)
+{
+    const std::string key = WideKey(ui::screen_backdrop::Current());
+    if (key != g_wideKey || (g_shownWide && g_shownWide->rgb555 != rgb555)) {
+        DropWide();
+        g_wideKey = key;
+        // Mostly decoded already: the image loader took the screen's part of it (WideScreenPart).
+        g_shownWide = DecodeWide(key, rgb555);
+        if (g_shownWide) {
+            const WidePicture& wide = *g_shownWide;
+            g_wide = SDL_CreateTexture(g_renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, wide.width, wide.height);
+            if (g_wide) {
+                SDL_SetTextureScaleMode(g_wide, SDL_SCALEMODE_LINEAR);
+                SDL_SetTextureBlendMode(g_wide, SDL_BLENDMODE_NONE);
+                SDL_UpdateTexture(g_wide, nullptr, wide.rgba.data(), wide.width * 4);
+            }
+        }
+    }
+    if (!g_wide || !g_shownWide || frameWidth != kScreenWidth || frameHeight != kScreenHeight) return nullptr;
+    const WidePicture& wide = *g_shownWide;
+    if (!ShowsWidePart(bits, pitch / 2, wide.part16.data(), kScreenWidth, kScreenHeight)) return nullptr;
+    const WidePlacement& place = *FindWidePlacement(key);
+    const float k = picture.w / static_cast<float>(frameWidth); // client pixels per game pixel
+    const SDL_FRect back{picture.x + place.x * k, picture.y + place.y * k, static_cast<float>(wide.width) * place.scale * k,
+            static_cast<float>(wide.height) * place.scale * k};
+    SDL_RenderTexture(g_renderer, g_wide, nullptr, &back);
+    const SDL_FRect topRow{0, 0, static_cast<float>(wide.width), 1}, bottomRow{0, static_cast<float>(wide.height - 1), topRow.w, 1};
+    if (back.y > picture.y) {
+        const SDL_FRect above{back.x, picture.y, back.w, back.y - picture.y};
+        SDL_RenderTexture(g_renderer, g_wide, &topRow, &above);
+    }
+    if (back.y + back.h < picture.y + picture.h) {
+        const SDL_FRect below{back.x, back.y + back.h, back.w, picture.y + picture.h - back.y - back.h};
+        SDL_RenderTexture(g_renderer, g_wide, &bottomRow, &below);
+    }
+    if (!g_fullColour) {
+        g_fullColour = SDL_CreateTexture(g_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, kScreenWidth, kScreenHeight);
+        if (!g_fullColour) return nullptr;
+        SDL_SetTextureBlendMode(g_fullColour, SDL_BLENDMODE_NONE);
+        SDL_SetTextureScaleMode(g_fullColour, SDL_SCALEMODE_LINEAR);
+    }
+    g_fullColourPixels.resize(wide.part.size());
+    FullColourFrame(bits, pitch / 2, wide.part.data(), wide.part16.data(), rgb555, kScreenWidth, kScreenHeight, g_fullColourPixels.data());
+    SDL_UpdateTexture(g_fullColour, nullptr, g_fullColourPixels.data(), kScreenWidth * 4);
+    return g_fullColour;
+}
+#endif
+
 bool Present(const uint16_t* bits, int pitch, int width, int height, SDL_PixelFormat format)
 {
     if (!Attach() || !EnsureTexture(format, width, height)) return false;
@@ -262,7 +584,20 @@ bool Present(const uint16_t* bits, int pitch, int width, int height, SDL_PixelFo
     SDL_FRect dst = LetterboxRect(width, height, std::max(outW, 1), std::max(outH, 1));
     SDL_SetRenderDrawColor(g_renderer, 0, 0, 0, 255);
     SDL_RenderClear(g_renderer);
-    SDL_RenderTexture(g_renderer, g_texture, nullptr, &dst);
+    const SDL_FRect* source = nullptr; // the whole frame
+    SDL_Texture* frame = g_texture;
+#ifdef __ANDROID__
+    const TouchPadView view = CurrentTouchPadView();
+    const SDL_FRect zoom = ZoomSource(dst, view, width, height);
+    if (view.zoomed) source = &zoom;
+    if (!view.zoomed && dst.x >= 1.0f)
+        if (SDL_Texture* fullColour = DrawWideBackdrop(dst, bits, pitch, width, height, format == SDL_PIXELFORMAT_XRGB1555))
+            frame = fullColour;
+#endif
+    SDL_RenderTexture(g_renderer, frame, source, &dst);
+#ifdef __ANDROID__
+    DrawTouchPad(dst, width, view);
+#endif
     if (g_verifyRequested) {
         g_verifyRequested = false;
         Verify(bits, pitch, width, height, dst);
@@ -452,6 +787,9 @@ SdlPumpResult PumpSdlEvents()
             g_texture = nullptr;
             g_sourceFormat = SDL_PIXELFORMAT_UNKNOWN;
         }
+#ifdef __ANDROID__
+        DropWide();
+#endif
     }
     while (g_closePosted ||
             SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_EVENT_WINDOW_CLOSE_REQUESTED, SDL_EVENT_WINDOW_CLOSE_REQUESTED) > 0) {

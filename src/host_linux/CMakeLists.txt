@@ -264,6 +264,7 @@ foreach(target ${GAME_TARGETS})
     # portable sources compile into the game with the simulation's flags, since they share json_schema and nlohmann types.
     obl_embedded_schemas(${target})
     obl_embedded_icon(${target})
+    obl_embedded_bytes(${target} assets/ui/controls_tab_hand.png kControlsTabHand controls_tab_hand.gen.h) # game/ui/own_sprites.cpp
     obl_gui_content_schemas(${target})
     obl_catalog_schemas(${target})
     target_compile_definitions(${target} PRIVATE NOMINMAX OBL_LINUX_HOST=1)

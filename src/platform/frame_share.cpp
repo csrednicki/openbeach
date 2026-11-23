@@ -7,6 +7,7 @@
 // SDL2's headers (OBL_SDL2_INCLUDE_DIR) and never SDL3's.
 
 #include "platform/frame_share.h"
+#include "platform/arrow_cursor.h"
 
 #include "core/log.h"
 #include "platform/frame_bands.h"
@@ -211,27 +212,6 @@ int OpenKeyDevice()
 }
 
 // ---- drawing -----------------------------------------------------------------------------------------------------------------------
-// X outline, . fill: the cursor, 12 x 17.
-constexpr const char* kArrow[17] = {
-        "X           ",
-        "XX          ",
-        "X.X         ",
-        "X..X        ",
-        "X...X       ",
-        "X....X      ",
-        "X.....X     ",
-        "X......X    ",
-        "X.......X   ",
-        "X........X  ",
-        "X.....XXXXX ",
-        "X..X..X     ",
-        "X.X X..X    ",
-        "XX  X..X    ",
-        "X    X..X   ",
-        "     X..X   ",
-        "      XX    ",
-};
-
 // 3 x 5 glyphs of "0123456789%", one row per 3 bits.
 constexpr unsigned char kGlyphs[11][5] = {
         {7, 5, 5, 5, 7},
