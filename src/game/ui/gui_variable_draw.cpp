@@ -19,6 +19,7 @@
 #include "game/ui/gui_definitions.h"
 #include "game/ferry/ferry.h"
 #include "game/ui/text_table.h"
+#include "game/ui/screen_backdrop.h"
 #include "game/world/world_params.h"
 #include "game/ui/sound_api.h"
 #include "game/ui/font.h"
@@ -313,6 +314,8 @@ namespace obl::ui {
 
 void GuiVariable::DrawOverlay()
 {
+    // The touch help covers the loading screen's card, where its scenario title, status and description stand (main_menu.gui).
+    if (screen_backdrop::TouchHelpShown()) return;
     TextRenderer* renderer = gui::RendererOf(this);
     if (!renderer) {
         // Ignore fonts outside the script font table.

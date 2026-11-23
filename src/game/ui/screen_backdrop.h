@@ -32,6 +32,23 @@ using WideScreen = bool (*)(
         const std::string& key, bool rgb555, int width, int height, std::vector<uint16_t>& pixels, int& pictureX, int& pictureY);
 inline WideScreen g_wideScreen = nullptr;
 
+// The loading screens shown before a scenario (LoadingScreen1, LoadingScreen2).
+inline bool IsLoadingScreen(std::string_view key)
+{
+    return key == "loading_1" || key == "loading_2";
+}
+
+// Set by the Android presenter when it loads a loading screen: with the touch gestures that screen shows the gestures' help
+// (screens_wide/touchhelp.avif) instead, the game draws its captions over it (game.cpp) and LoadGame waits for a tap.
+inline bool g_touchHelp = false;
+// The help was tapped: its prompt says that the scenario loads (game.cpp) until LoadGame ends.
+inline bool g_touchHelpLoading = false;
+
+inline bool TouchHelpShown()
+{
+    return g_touchHelp && IsLoadingScreen(g_key);
+}
+
 // The screen whose wide version is shown with a moved scenario picture, and the move.
 inline std::string g_pictureKey;
 inline int g_pictureX = 0, g_pictureY = 0;

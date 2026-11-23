@@ -5,7 +5,7 @@
 //   tap                    left click
 //   drag with one finger   camera drag (the right button held, the motion as deltas)
 //   press and hold         right click once the finger has stayed still kHoldMs (a slider holds the left button instead)
-//   tap with two fingers   while placing, a tap of a second finger turns the preview the first one holds
+//   second finger          while placing, its tap or a drag of both fingers turns the preview the first one holds
 //   drag with two fingers  the wheel (up and down)
 //   swipe with two fingers one game speed step: to the right faster, to the left slower
 //   pinch with two fingers one step of the game's zoom (the fingers a quarter wider or narrower)
@@ -42,7 +42,7 @@ struct TouchAction {
         RightDown, // at (x, y); the camera drag starts with it
         RightUp,
         Drag, // camera drag motion since the last one: (x, y) are the deltas in client pixels
-        Wheel, // x = 0, y = notches (a finger moving up scrolls down, like a touch list)
+        Wheel, // x = 0, y = whole notches (a finger moving up scrolls down, like a touch list)
         Zoom, // a pinch step: y = 1 closer (fingers apart), -1 farther
         Speed, // a two-finger swipe: y = 1 faster (to the right), -1 slower
         Turn, // placing: a second finger tapped while the first holds the preview
@@ -146,6 +146,16 @@ private:
         Emit(TouchAction::Kind::Speed, 0, sideways > 0 ? 1.0f : -1.0f);
         m_mode = Mode::Done;
     }
+    // Whole notches only, as a mouse wheel gives them: the game takes every wheel event as a step (a building being placed turns
+    // once per event), so the motion short of a notch waits for more.
+    void WheelStep(float notches)
+    {
+        m_wheel += notches;
+        const float whole = std::trunc(m_wheel);
+        if (whole == 0) return;
+        Emit(TouchAction::Kind::Wheel, 0, whole);
+        m_wheel -= whole;
+    }
     void Release()
     {
         // Whatever the gesture holds goes up where its finger was.
@@ -160,6 +170,7 @@ private:
     float m_startX = 0, m_startY = 0; // where the gesture began (the primary finger; the centroid of Two)
     float m_lastX = 0, m_lastY = 0; // the last position the gesture used
     float m_span = 0; // Two and Pinch: the fingers' distance the next pinch step counts from
+    float m_wheel = 0; // Scroll: notches moved but not yet emitted
     uint32_t m_startMs = 0;
     float m_scale = 1.0f;
     TouchAim m_nextAim = TouchAim::None;
@@ -249,7 +260,8 @@ inline void TouchGestures::FingerMove(int64_t id, float x, float y, uint32_t ms)
             break;
         }
         m_mode = Mode::Scroll;
-        Emit(TouchAction::Kind::Wheel, 0, (cy - m_startY) / (kPixelsPerNotch * m_scale));
+        m_wheel = 0;
+        WheelStep((cy - m_startY) / (kPixelsPerNotch * m_scale));
         m_lastX = cx;
         m_lastY = cy;
         break;
@@ -257,7 +269,7 @@ inline void TouchGestures::FingerMove(int64_t id, float x, float y, uint32_t ms)
     case Mode::Scroll: {
         float cx, cy;
         Centroid(cx, cy);
-        Emit(TouchAction::Kind::Wheel, 0, (cy - m_lastY) / (kPixelsPerNotch * m_scale));
+        WheelStep((cy - m_lastY) / (kPixelsPerNotch * m_scale));
         m_lastX = cx;
         m_lastY = cy;
         break;
@@ -299,9 +311,11 @@ inline void TouchGestures::FingerUp(int64_t id, float x, float y, uint32_t ms)
         m_mode = Mode::Done;
         break;
     case Mode::Two:
-        // Placing: a quick tap of the second finger turns the preview, and the first finger goes on aiming; its lift places.
-        if (m_aim == TouchAim::Confirm && id != m_primary && ms - m_startMs <= kTapMs) {
-            Emit(TouchAction::Kind::Turn, x, y);
+    case Mode::Scroll:
+        // Placing: the second finger turns the preview, by a quick tap or by dragging up or down with the first (the wheel); when
+        // it leaves, the first finger goes on aiming and its lift places.
+        if (m_aim == TouchAim::Confirm && id != m_primary) {
+            if (m_mode == Mode::Two && ms - m_startMs <= kTapMs) Emit(TouchAction::Kind::Turn, x, y);
             m_mode = Mode::One;
             break;
         }
@@ -318,7 +332,6 @@ inline void TouchGestures::FingerUp(int64_t id, float x, float y, uint32_t ms)
         Release();
         m_mode = Mode::Done;
         break;
-    case Mode::Scroll:
     case Mode::Pinch:
     case Mode::Swipe: m_mode = Mode::Done; break;
     case Mode::Idle:

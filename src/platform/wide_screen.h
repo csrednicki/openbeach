@@ -34,6 +34,8 @@ inline const WidePlacement* FindWidePlacement(std::string_view key)
             {"loading_2", 0.7399f, -302.61f, 0.0f},
             {"mainmenu", 0.7784f, -330.95f, 0.0f},
             {"scenarioscreen", 0.7183f, -266.98f, 6.07f, 13, -2},
+            // The touch gestures' help (screen_backdrop::g_touchHelp) has no original: it fills the height, centred.
+            {"touchhelp", 600.0f / 822.0f, (800.0f - 1914.0f * 600.0f / 822.0f) / 2.0f, 0.0f},
     };
     for (const WidePlacement& placement : kPlacements)
         if (placement.key == key) return &placement;
@@ -79,29 +81,30 @@ inline void SampleWide(const uint8_t* rgba, int width, int height, const WidePla
     }
 }
 
-// Whether the game's 16-bit frame shows the wide picture's part (`wide`, the 16-bit pixels the game drew are To16 of it): a
-// quarter of every fourth row's every fourth pixel at least, so buttons, texts and the loading bar leave it a screen and the game's
-// map does not.
-inline bool ShowsWidePart(const uint16_t* frame, int pitchPixels, const uint32_t* wide, bool rgb555, int width, int height)
+// Whether the game's 16-bit frame shows the wide picture's part (`wide16`, its To16 pixels, which the game drew): a quarter of
+// every fourth row's every fourth pixel at least, so buttons, texts and the loading bar leave it a screen and the game's map does
+// not. The 16-bit part is converted once per picture: the presenter asks every frame.
+inline bool ShowsWidePart(const uint16_t* frame, int pitchPixels, const uint16_t* wide16, int width, int height)
 {
     int samples = 0, same = 0;
     for (int y = 0; y < height; y += 4)
         for (int x = 0; x < width; x += 4) {
             ++samples;
-            same += frame[static_cast<size_t>(y) * pitchPixels + x] == To16(wide[static_cast<size_t>(y) * width + x], rgb555);
+            same += frame[static_cast<size_t>(y) * pitchPixels + x] == wide16[static_cast<size_t>(y) * width + x];
         }
     return same * 4 >= samples;
 }
 
-// The game's 16-bit frame in full colour: where it still shows the wide picture's part (`wide`, the 16-bit pixels the game
-// drew are To16 of it) that part's own colours, elsewhere (buttons, texts, a fade) the frame's.
-inline void FullColourFrame(const uint16_t* frame, int pitchPixels, const uint32_t* wide, bool rgb555, int width, int height, uint32_t* out)
+// The game's 16-bit frame in full colour: where it still shows the wide picture's part (`wide16`, the To16 of `wide`) that part's
+// own colours, elsewhere (buttons, texts, a fade) the frame's.
+inline void FullColourFrame(const uint16_t* frame, int pitchPixels, const uint32_t* wide, const uint16_t* wide16, bool rgb555, int width,
+        int height, uint32_t* out)
 {
     for (int y = 0; y < height; ++y)
         for (int x = 0; x < width; ++x) {
+            const size_t at = static_cast<size_t>(y) * width + x;
             const uint16_t pixel = frame[static_cast<size_t>(y) * pitchPixels + x];
-            const uint32_t colour = wide[static_cast<size_t>(y) * width + x];
-            out[static_cast<size_t>(y) * width + x] = pixel == To16(colour, rgb555) ? colour : From16(pixel, rgb555);
+            out[at] = pixel == wide16[at] ? wide[at] : From16(pixel, rgb555);
         }
 }
 

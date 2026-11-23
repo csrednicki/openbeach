@@ -43,6 +43,7 @@ struct ExitGameFields {
 };
 struct LoadGameFields {
     float m_time = 0.0f;
+    uint8_t m_tapped = 0; // the touch help was tapped: the load starts the frame after
 };
 struct IntroFields {
     int m_phase = 0; // 0 DeepRedLogo, 1 FrontScreen
@@ -125,7 +126,16 @@ template<class State, class Env> void IntroEnter(State& state, Env& env)
 template<class State, class Env> int LoadGameUpdate(State& state, Env& env)
 {
     // No step limit here: a long first frame hands over at once.
-    if (AddStep(state.m_time, env.FrameStep(), false) > kLoadSeconds) env.SetNextState(GameStateId::WorldTest);
+    if (AddStep(state.m_time, env.FrameStep(), false) <= kLoadSeconds) return 0;
+    // The touch gestures' help on the loading screen (Android, screen_backdrop::TouchHelpShown) stays until the player taps. The
+    // tap first shows that the scenario loads: the world's load shows nothing for a second or two before its loading bar.
+    if (env.TouchHelpShown() && !state.m_tapped) {
+        if (env.LeftButton() != 1) return 0;
+        state.m_tapped = 1;
+        env.ShowTouchHelpLoading();
+        return 0;
+    }
+    env.SetNextState(GameStateId::WorldTest);
     return 0;
 }
 
@@ -133,6 +143,7 @@ template<class State> void LoadGameEnter(State& state)
 {
     state.m_entered = 1;
     state.m_time = 0.0f;
+    state.m_tapped = 0;
 }
 
 // ---- MainMenu ----

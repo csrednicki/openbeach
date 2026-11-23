@@ -26,9 +26,11 @@
 #include "platform/input.h"
 #include "platform/touch_pad.h"
 #include "platform/wide_screen.h"
+#include "game/game/settings_store.h"
 #include "game/ui/screen_backdrop.h"
 
 #include <dlfcn.h>
+#include <memory>
 #include <string>
 #endif
 #include "core/log.h"
@@ -346,9 +348,10 @@ SDL_FRect ZoomSource(const SDL_FRect& picture, const TouchPadView& view, int wid
     return {(view.zoomX - picture.x - picture.w / 4) * kx, (view.zoomY - picture.y - picture.h / 4) * ky, width / 2.0f, height / 2.0f};
 }
 
-// The D-pad and touchpad controls over the frame (touch_pad.h, Android with the touch controls off): the arrow cursor at the picture's scale (Android shows no
-// pointer for fingers; zoomed with the picture), a round D-pad whose held arrows and their quarter light up, the magnifier's button.
-void DrawTouchPad(int outW, int outH, const SDL_FRect& picture, int gameWidth, const TouchPadView& view)
+// The D-pad and touchpad controls over the frame (touch_pad.h, Android with the touch controls off): the arrow cursor at the
+// picture's scale (Android shows no pointer for fingers; zoomed with the picture), a round D-pad whose held arrows and their
+// quarter light up, the magnifier's button.
+void DrawTouchPad(const SDL_FRect& picture, int gameWidth, const TouchPadView& view)
 {
     SDL_SetRenderDrawBlendMode(g_renderer, SDL_BLENDMODE_BLEND);
     int cursorX = 0, cursorY = 0;
@@ -401,10 +404,22 @@ void DrawTouchPad(int outW, int outH, const SDL_FRect& picture, int gameWidth, c
 // Android 12); libjnigraphics is opened at run time because the APK starts at API 26. Without it the original screens show with
 // black bars, as do gameplay and the intro movie (intro_movie.cpp).
 constexpr int kScreenWidth = 800, kScreenHeight = 600; // the screens' size, which the wide part covers
+
+// A wide picture, decoded once for the image loader and the presenter: its pixels and its part under the screen (SampleWide), in
+// full colour and in the frame's 16 bits.
+struct WidePicture {
+    std::string key;
+    bool rgb555 = false;
+    int width = 0, height = 0;
+    std::vector<uint8_t> rgba;
+    std::vector<uint32_t> part;
+    std::vector<uint16_t> part16;
+};
+std::shared_ptr<const WidePicture> g_lastWide; // the last one decoded: the image loader's screen is the presenter's next
+
 SDL_Texture* g_wide;
 std::string g_wideKey; // the screen g_wide shows, or the one that has no wide version
-int g_wideWidth, g_wideHeight;
-std::vector<uint32_t> g_widePart; // its part under the screen (SampleWide)
+std::shared_ptr<const WidePicture> g_shownWide; // g_wide's picture
 SDL_Texture* g_fullColour; // the frame in full colour
 std::vector<uint32_t> g_fullColourPixels;
 
@@ -414,7 +429,7 @@ void DropWide()
     if (g_fullColour) SDL_DestroyTexture(g_fullColour);
     g_wide = g_fullColour = nullptr;
     g_wideKey.clear();
-    g_widePart.clear();
+    g_shownWide.reset();
 }
 
 // RGBA pixels of an AVIF file, or empty.
@@ -463,16 +478,44 @@ std::vector<uint8_t> LoadWide(const std::string& key, int& width, int& height)
     return pixels;
 }
 
-// screen_backdrop::g_wideScreen: the wide version's part under the screen.
-bool WideScreenPart(const std::string& key, bool rgb555, int width, int height, std::vector<uint16_t>& pixels, int& pictureX, int& pictureY)
+// The wide picture of a screen, or null.
+std::shared_ptr<const WidePicture> DecodeWide(const std::string& key, bool rgb555)
 {
-    int w = 0, h = 0;
-    const std::vector<uint8_t> rgba = LoadWide(key, w, h);
-    if (rgba.empty()) return false;
-    std::vector<uint32_t> part(static_cast<size_t>(width) * static_cast<size_t>(height));
-    SampleWide(rgba.data(), w, h, *FindWidePlacement(key), part.data(), width, height);
-    pixels.resize(part.size());
-    std::transform(part.begin(), part.end(), pixels.begin(), [rgb555](uint32_t colour) { return To16(colour, rgb555); });
+    if (g_lastWide && g_lastWide->key == key && g_lastWide->rgb555 == rgb555) return g_lastWide;
+    auto picture = std::make_shared<WidePicture>();
+    picture->key = key;
+    picture->rgb555 = rgb555;
+    picture->rgba = LoadWide(key, picture->width, picture->height);
+    if (picture->rgba.empty()) return nullptr;
+    picture->part.resize(static_cast<size_t>(kScreenWidth) * kScreenHeight);
+    SampleWide(picture->rgba.data(), picture->width, picture->height, *FindWidePlacement(key), picture->part.data(), kScreenWidth,
+            kScreenHeight);
+    picture->part16.resize(picture->part.size());
+    std::transform(picture->part.begin(), picture->part.end(), picture->part16.begin(),
+            [rgb555](uint32_t colour) { return To16(colour, rgb555); });
+    g_lastWide = picture;
+    return picture;
+}
+
+// The picture a screen shows: the touch help in place of a loading screen while it is on (screen_backdrop::g_touchHelp).
+std::string WideKey(const std::string& screen)
+{
+    return ui::screen_backdrop::g_touchHelp && ui::screen_backdrop::IsLoadingScreen(screen) ? "touchhelp" : screen;
+}
+
+// screen_backdrop::g_wideScreen: the wide version's part under the screen. A loading screen shows the touch help with the touch
+// gestures (the D-pad and touchpad have other gestures).
+bool WideScreenPart(
+        const std::string& screen, bool rgb555, int width, int height, std::vector<uint16_t>& pixels, int& pictureX, int& pictureY)
+{
+    namespace backdrop = ui::screen_backdrop;
+    const bool help =
+            backdrop::IsLoadingScreen(screen) && game::settings_store::Exists() && game::settings_store::Current().m_touchControls != 0;
+    const std::string key = help ? "touchhelp" : screen;
+    const std::shared_ptr<const WidePicture> picture = DecodeWide(key, rgb555);
+    if (backdrop::IsLoadingScreen(screen)) backdrop::g_touchHelp = help && picture;
+    if (!picture || width != kScreenWidth || height != kScreenHeight) return false;
+    pixels = picture->part16;
     pictureX = FindWidePlacement(key)->pictureX;
     pictureY = FindWidePlacement(key)->pictureY;
     return true;
@@ -486,33 +529,31 @@ bool WideScreenPart(const std::string& key, bool rgb555, int width, int height, 
 // is.
 SDL_Texture* DrawWideBackdrop(const SDL_FRect& picture, const uint16_t* bits, int pitch, int frameWidth, int frameHeight, bool rgb555)
 {
-    const std::string& key = ui::screen_backdrop::Current();
-    if (key != g_wideKey) {
+    const std::string key = WideKey(ui::screen_backdrop::Current());
+    if (key != g_wideKey || (g_shownWide && g_shownWide->rgb555 != rgb555)) {
         DropWide();
         g_wideKey = key;
-        int w = 0, h = 0;
-        const std::vector<uint8_t> pixels = LoadWide(key, w, h);
-        if (!pixels.empty()) {
-            g_wide = SDL_CreateTexture(g_renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, w, h);
+        // Mostly decoded already: the image loader took the screen's part of it (WideScreenPart).
+        g_shownWide = DecodeWide(key, rgb555);
+        if (g_shownWide) {
+            const WidePicture& wide = *g_shownWide;
+            g_wide = SDL_CreateTexture(g_renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, wide.width, wide.height);
             if (g_wide) {
                 SDL_SetTextureScaleMode(g_wide, SDL_SCALEMODE_LINEAR);
                 SDL_SetTextureBlendMode(g_wide, SDL_BLENDMODE_NONE);
-                SDL_UpdateTexture(g_wide, nullptr, pixels.data(), w * 4);
-                g_wideWidth = w;
-                g_wideHeight = h;
-                g_widePart.resize(static_cast<size_t>(kScreenWidth) * kScreenHeight);
-                SampleWide(pixels.data(), w, h, *FindWidePlacement(key), g_widePart.data(), kScreenWidth, kScreenHeight);
+                SDL_UpdateTexture(g_wide, nullptr, wide.rgba.data(), wide.width * 4);
             }
         }
     }
-    if (!g_wide || frameWidth != kScreenWidth || frameHeight != kScreenHeight) return nullptr;
-    if (!ShowsWidePart(bits, pitch / 2, g_widePart.data(), rgb555, kScreenWidth, kScreenHeight)) return nullptr;
+    if (!g_wide || !g_shownWide || frameWidth != kScreenWidth || frameHeight != kScreenHeight) return nullptr;
+    const WidePicture& wide = *g_shownWide;
+    if (!ShowsWidePart(bits, pitch / 2, wide.part16.data(), kScreenWidth, kScreenHeight)) return nullptr;
     const WidePlacement& place = *FindWidePlacement(key);
     const float k = picture.w / static_cast<float>(frameWidth); // client pixels per game pixel
-    const SDL_FRect back{picture.x + place.x * k, picture.y + place.y * k, static_cast<float>(g_wideWidth) * place.scale * k,
-            static_cast<float>(g_wideHeight) * place.scale * k};
+    const SDL_FRect back{picture.x + place.x * k, picture.y + place.y * k, static_cast<float>(wide.width) * place.scale * k,
+            static_cast<float>(wide.height) * place.scale * k};
     SDL_RenderTexture(g_renderer, g_wide, nullptr, &back);
-    const SDL_FRect topRow{0, 0, static_cast<float>(g_wideWidth), 1}, bottomRow{0, static_cast<float>(g_wideHeight - 1), topRow.w, 1};
+    const SDL_FRect topRow{0, 0, static_cast<float>(wide.width), 1}, bottomRow{0, static_cast<float>(wide.height - 1), topRow.w, 1};
     if (back.y > picture.y) {
         const SDL_FRect above{back.x, picture.y, back.w, back.y - picture.y};
         SDL_RenderTexture(g_renderer, g_wide, &topRow, &above);
@@ -527,8 +568,8 @@ SDL_Texture* DrawWideBackdrop(const SDL_FRect& picture, const uint16_t* bits, in
         SDL_SetTextureBlendMode(g_fullColour, SDL_BLENDMODE_NONE);
         SDL_SetTextureScaleMode(g_fullColour, SDL_SCALEMODE_LINEAR);
     }
-    g_fullColourPixels.resize(g_widePart.size());
-    FullColourFrame(bits, pitch / 2, g_widePart.data(), rgb555, kScreenWidth, kScreenHeight, g_fullColourPixels.data());
+    g_fullColourPixels.resize(wide.part.size());
+    FullColourFrame(bits, pitch / 2, wide.part.data(), wide.part16.data(), rgb555, kScreenWidth, kScreenHeight, g_fullColourPixels.data());
     SDL_UpdateTexture(g_fullColour, nullptr, g_fullColourPixels.data(), kScreenWidth * 4);
     return g_fullColour;
 }
@@ -555,7 +596,7 @@ bool Present(const uint16_t* bits, int pitch, int width, int height, SDL_PixelFo
 #endif
     SDL_RenderTexture(g_renderer, frame, source, &dst);
 #ifdef __ANDROID__
-    DrawTouchPad(outW, outH, dst, width, view);
+    DrawTouchPad(dst, width, view);
 #endif
     if (g_verifyRequested) {
         g_verifyRequested = false;

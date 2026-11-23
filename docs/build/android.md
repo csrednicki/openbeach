@@ -41,10 +41,63 @@ choose **Manage data** to re-import, launch the L0 demo or export `openbeach.log
 |---|---|
 | Start | `LauncherActivity` starts `OpenBeachActivity` (subclass of SDL's `SDLActivity`) immediately when imported data exists, or shows the import/demo screen. `OpenBeachActivity` loads `libmain.so` and calls `main` in `src/launcher/android_main.cpp` (no desktop settings window, no `obl-convert` old-save pass; logs mirror to Android `logcat` under tag `OpenBeach`). |
 | Demo | The L0 pack ships in APK `assets/l0/packs/l0/` and unpacks once per installed version into `files/l0/` (`--pack l0`). |
-| Screen | Fullscreen landscape (`sensorLandscape`, `SDL_ORIENTATIONS`, cutout `shortEdges`, `window_placement.cpp`). SDL's GLES renderer letterboxes with linear filtering (`SDL_SCALEMODE_LINEAR`); the screens before a game that have a wide (21:9) version in the APK (`assets/screens_wide/<key>.avif`, decoded by Android's `AImageDecoder` from Android 12) show that version instead of the original: the image loader takes its part under the 800x600 screen as a 16-bit image (`image.cpp` through `ui::screen_backdrop::g_wideScreen`; the renderer draws 16-bit images opaque, `renderer_draw.cpp`), and the presenter draws the whole picture at the same place behind the frame, so it fills the bars, and shows the frame in full colour wherever it still shows that part (`FullColourFrame`; buttons, texts and fades keep the frame's 16 bits) (`DrawWideBackdrop`; the screen is the last full-screen picture drawn, `ui::screen_backdrop`, unit tests `screen_backdrop.*`). Each wide picture's place was fitted to its original screen (`wide_screen.h`, unit tests `wide_screen.*`), so the buttons and islands the scripts place stay on their pictures (the scenario screen on its island map, where the game draws its own island pictures, and its large scenario picture moves onto the middle of the wide picture's white card, `screen_backdrop::PictureShift`; the few rows it leaves above and below repeat its edge rows). They show while the frame still shows that part (`ShowsWidePart`), so also while a scenario loads, and never over the game. Older Androids, the other screens and gameplay keep the original with black bars. The intro movie shows only the 16:9 band in the middle of its 640x480 frame, at the screen's height, and recreates its texture on `SDL_EVENT_RENDER_DEVICE_RESET`. Options > Video lists the heights 360, 480, 600 and 768 at the screen's aspect (2608x1200: 782x360 ... 1670x768), which fill the screen; the activity passes the screen as `OBL_SCREEN_SIZE` (`ui::BuildAspectResolutionTable`, `AspectWidth`). The bottom panel keeps its own width there (800, or the 640 one below 800 wide), centred, and the map runs to the screen's bottom edge beside it (`ui::SetCenteredBar`: the `MainItem` lays out at that width, `gui_script.cpp`; the panel's surface has that width, `gui_manager_frame.h`; no bottom trim, `renderer_helpers.cpp`). The panel slides down out of sight after a delay without input (Options > Controls, 4 s at first) and back up on any key, mouse or finger action (`bar_slide.h`, unit tests `bar_slide.*`); while sliding it is drawn in place with its texts, stars and ticker and its pixels move down over the map saved from under it (`SaveStrip`, `SlideStrip`); while it is not fully shown it takes no clicks. Dialogs open in the middle of the map above the panel whatever the script anchors them to (a building's corner, the build panel's bottom edge, the screen's centre), except those anchored to the right (the build mode's cancel panel); they open there, as if the panel were always shown (`ParseDialogItem`); windows open there every time, not at a position remembered in `[Dialog]` (`ShowDialog`). Options > Video > Wide screen (`[Video] WideScreen`, on at first) keeps that list; off, the list is the original 4:3 one (640x480, 800x600, 1024x768, 1280x960) and the game switches at once (`ui::SetWideScreen`). A saved resolution the list does not hold, and the first start without `BeachLife.ini` (800x600), become its 480-high one when wide (1044x480 on 2608x1200) and 800x600 when not (`ListedResolution` after the settings load, unit test `geometry.an_android_start_plays_wide`); the menus stay 800x600. Options > Video > Frame counter (`[Video] FpsCounter`, off at first) shows the game's frames per second (`GameClock::m_fps`) at the top of the screen, in its middle, clear of rounded corners, in the GUI's title font, white on a see-through dark box (`DrawFrameCounter` at the end of the GUI overlay, `game.cpp`). Both checkboxes stand first under the resolution in the Video tab's one column, whose rows are 23 pixels apart from 100 (`own_controls.cpp`, `SpreadVideoRows`); Wide screen only where the screen's size is known. |
+| Screen | Fullscreen landscape (`sensorLandscape`, `SDL_ORIENTATIONS`, cutout `shortEdges`, `window_placement.cpp`). SDL's GLES renderer letterboxes with linear filtering (`SDL_SCALEMODE_LINEAR`). Wide screens, the resolutions and the centred panel: [The screen](#the-screen). |
 | Touch | Options > Controls > Touch controls (on at first): the browser's gestures (`kTouchGestures`, `kAbsoluteDrag`, [browser-build.md](../architecture/browser-build.md)) with display-scale thresholds (`TouchGestures::SetScale`) and physical-pixel coordinates (`SDL_GetWindowSizeInPixels`): tap = left click, one-finger drag = camera pan, hold = right click, two-finger drag up or down = wheel, two-finger swipe to the right or left = one game speed step faster or slower, pinch = one step of the game's zoom, a finger on a slider drags it. Off: the handheld's controls below. |
 | Keys | System back button or gesture maps to `Escape` (`input_mapping.cpp`, `SDL_HINT_ANDROID_TRAP_BACK_BUTTON`). Two-finger drag turns a building being placed. |
 | Instance lock | No-op on Android (`instance_lock.cpp`): Android enforces one app process and `/tmp` is not writable. |
+
+## The screen
+**Wide screens.** The screens before a game that have a wide (21:9) version in the APK (`assets/screens_wide/<key>.avif`,
+decoded by Android's `AImageDecoder` from Android 12) show that version instead of the original. Older Androids, the other
+screens and gameplay keep the original with black bars.
+- The image loader takes the wide picture's part under the 800x600 screen as a 16-bit image (`image.cpp` through
+  `ui::screen_backdrop::g_wideScreen`; the renderer draws 16-bit images opaque, `renderer_draw.cpp`). The presenter draws the
+  whole picture at the same place behind the frame, so it fills the bars, and shows the frame in full colour wherever it still
+  shows that part (`DrawWideBackdrop`, `FullColourFrame`; buttons, texts and fades keep the frame's 16 bits). Both use one
+  decoded picture, its part converted to 16 bits once (`DecodeWide`); the screen is the last full-screen picture drawn
+  (`ui::screen_backdrop`, unit tests `screen_backdrop.*`).
+- Each wide picture's place was fitted to its original screen (`wide_screen.h`, unit tests `wide_screen.*`), so the buttons
+  and islands the scripts place stay on their pictures. The scenario screen is fitted on its island map, where the game draws
+  its own island pictures; its large scenario picture moves onto the middle of the wide picture's white card
+  (`screen_backdrop::PictureShift`), and the few rows it leaves above and below repeat its edge rows.
+- They show while the frame still shows that part (`ShowsWidePart`), so also while a scenario loads, and never over the game.
+
+**Touch help.** With the touch gestures the loading screens before a scenario show the gestures' help instead
+(`touchhelp.avif`, `screen_backdrop::g_touchHelp`, until LoadGame ends). Their scenario title, status and description are not
+drawn (`GuiVariable::DrawOverlay`); the game writes a caption into each of the help's panels and a prompt over the sea
+(`DrawTouchHelp`, `game.cpp`; texts `OBL_TOUCH_HELP_*` in `own_texts.cpp`). LoadGame waits for a tap; the tap turns the
+prompt into "Loading..." for a frame before the scenario loads, as the world's load shows nothing for a second or two before
+its loading bar (`screen_backdrop::g_touchHelpLoading`, unit test `game_states.load_game_waits_for_a_tap_on_the_touch_help`).
+
+**Intro movie.** Only the 16:9 band in the middle of its 640x480 frame shows, at the screen's height; its texture is recreated
+on `SDL_EVENT_RENDER_DEVICE_RESET`.
+
+**Resolutions.** Options > Video lists the heights 360, 480, 600 and 768 at the screen's aspect (2608x1200: 782x360 ...
+1670x768), which fill the screen; the activity passes the screen as `OBL_SCREEN_SIZE` (`ui::BuildAspectResolutionTable`,
+`AspectWidth`).
+- Options > Video > Wide screen (`[Video] WideScreen`, on at first) keeps that list; off, the list is the original 4:3 one
+  (640x480, 800x600, 1024x768, 1280x960) and the game switches at once (`ui::SetWideScreen`).
+- A saved resolution the list does not hold, and the first start without `BeachLife.ini` (800x600), become its 480-high one
+  when wide (1044x480 on 2608x1200) and 800x600 when not (`ListedResolution` after the settings load, unit test
+  `geometry.an_android_start_plays_wide`); the menus stay 800x600.
+- Options > Video > Frame counter (`[Video] FpsCounter`, off at first) shows the game's frames per second
+  (`GameClock::m_fps`) at the top of the screen, in its middle, clear of rounded corners, in the GUI's title font, white on a
+  see-through dark box (`DrawFrameCounter` at the end of the GUI overlay, `game.cpp`).
+- Both checkboxes stand first under the resolution in the Video tab's one column, whose rows are 23 pixels apart from 100
+  (`own_controls.cpp`, `SpreadVideoRows`); Wide screen only where the screen's size is known.
+
+**Centred panel.** At those resolutions the bottom panel keeps its own width (800, or the 640 one below 800 wide), centred,
+and the map runs to the screen's bottom edge beside it (`ui::SetCenteredBar`: the `MainItem` lays out at that width,
+`gui_script.cpp`; the panel's surface has that width, `gui_manager_frame.h`; its height is `ui::BarHeight`; no bottom trim,
+`renderer_helpers.cpp`).
+- The panel slides down out of sight after a delay without input (Options > Controls, 4 s at first) and back up on any key,
+  mouse or finger action (`bar_slide.h`, unit tests `bar_slide.*`). While sliding it is drawn in place with its texts, stars
+  and ticker, and its pixels move down over the map saved from under it (`SaveStrip`, `SlideStrip`); while it is not fully
+  shown it takes no clicks.
+- Dialogs open in the middle of the map above the panel, as if the panel were always shown, whatever the script anchors them
+  to (a building's corner, the build panel's bottom edge, the screen's centre), except those anchored to the right (the build
+  mode's cancel panel) (`ParseDialogItem`). Windows open there every time, not at a position remembered in `[Dialog]`
+  (`ShowDialog`).
 
 ## The Controls options
 The in-game options get a fourth tab, Controls, on touch screens (`own_controls::SetTouchScreen`, inserted into the script after

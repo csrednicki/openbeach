@@ -110,6 +110,48 @@ constexpr Row kRows[] = {
                         u"e d'affichage du panneau apr\x00e8s la derni\x00e8re action",
                         u"Quanto resta il pannello dopo l'ultima azione", u"Wie lange die Leiste nach der letzten Aktion bleibt",
                         u"Cu\x00e1nto sigue el panel tras la \x00faltima acci\x00f3n", u"Jak d\x0142ugo panel zostaje po ostatniej akcji"}},
+        // The captions of the touch gestures' help on the loading screen (game.cpp, DrawTouchHelp), in its panels' order.
+        {"OBL_TOUCH_HELP_TAP",
+                {u"Tap: click", u"Toucher : clic", u"Tocca: clic", u"Tippen: Klick", u"Toca: clic",
+                        u"Stukni\x0119"
+                        u"cie: klik"}},
+        {"OBL_TOUCH_HELP_DRAG",
+                {u"Drag: move the map", u"Glisser : d\x00e9placer la carte", u"Trascina: sposta la mappa", u"Ziehen: Karte bewegen",
+                        u"Arrastra: mover el mapa",
+                        u"Przeci\x0105gni\x0119"
+                        u"cie: ruch mapy"}},
+        {"OBL_TOUCH_HELP_HOLD",
+                {u"Hold: right click", u"Maintenir : clic droit", u"Tieni premuto: clic destro", u"Halten: Rechtsklick",
+                        u"Mant\x00e9n: clic derecho", u"Przytrzymanie: prawy klik"}},
+        {"OBL_TOUCH_HELP_SLIDER",
+                {u"Drag a slider", u"Glisser un curseur", u"Trascina un cursore", u"Regler ziehen", u"Arrastra un deslizador",
+                        u"Przesuwanie suwaka"}},
+        {"OBL_TOUCH_HELP_SCROLL",
+                {u"Two fingers: scroll, with the magnifier move the view",
+                        u"Deux doigts : d\x00e9"
+                        u"filer, avec la loupe d\x00e9placer la vue",
+                        u"Due dita: scorri, con la lente sposta la vista", u"Zwei Finger: scrollen, mit der Lupe Ansicht verschieben",
+                        u"Dos dedos: desplazar, con la lupa mover la vista", u"Dwa palce: przewijanie, z lup\x0105 przesuwanie widoku"}},
+        {"OBL_TOUCH_HELP_SPEED",
+                {u"Two fingers sideways: game speed", u"Deux doigts de c\x00f4t\x00e9 : vitesse du jeu",
+                        u"Due dita di lato: velocit\x00e0 di gioco", u"Zwei Finger seitw\x00e4rts: Spieltempo",
+                        u"Dos dedos de lado: velocidad del juego", u"Dwa palce w bok: szybko\x015b\x0107 gry"}},
+        {"OBL_TOUCH_HELP_ZOOM",
+                {u"Pinch: zoom", u"Pincer : zoom", u"Pizzica: zoom", u"Spreizen: Zoom", u"Pellizca: zoom",
+                        u"Szczypanie: przybli\x017c"
+                        u"enie"}},
+        {"OBL_TOUCH_HELP_PLACE",
+                {u"Building: tap a second finger to turn", u"Construction : touchez d'un 2e doigt pour tourner",
+                        u"Costruzione: tocca con un altro dito per ruotare", u"Bauen: mit einem zweiten Finger tippen dreht",
+                        u"Construir: toca con otro dedo para girar",
+                        u"Budowa: stuknij drugim palcem, by obr\x00f3"
+                        u"ci\x0107"}},
+        {"OBL_TOUCH_HELP_CONTINUE",
+                {u"Tap to continue", u"Touchez pour continuer", u"Tocca per continuare", u"Tippen zum Fortfahren", u"Toca para continuar",
+                        u"Dotknij, aby kontynuowa\x0107"}},
+        {"OBL_TOUCH_HELP_LOADING",
+                {u"Loading\x2026", u"Chargement\x2026", u"Caricamento\x2026", u"Wird geladen\x2026", u"Cargando\x2026",
+                        u"Wczytywanie\x2026"}},
 };
 
 size_t LanguageIndex(std::string_view language)

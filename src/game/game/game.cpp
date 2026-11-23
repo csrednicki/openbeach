@@ -602,6 +602,9 @@ void Update(Game* game)
         game->m_currentState->Enter();
         UpdateClock(&game->m_clock);
         InputClearButtonState(*GetInput());
+        // The touch help ends with LoadGame: the loading screen stays the last screen drawn, and its help must not show in the game.
+        if (game->m_currentState != game->m_states[static_cast<int>(game::GameStateId::LoadGame)].get())
+            ui::screen_backdrop::g_touchHelp = ui::screen_backdrop::g_touchHelpLoading = false;
     }
     // Bug fix: a save loads inside this one frame (main menu -> WorldTest), and the frame then ran the WorldTest update too, a
     // frame of simulation that no tick counted (a save and reload was not a no-op; found by the chaos bot's save round trip). The
@@ -738,6 +741,44 @@ void DrawFrameCounter(ui::GuiManager* gui)
     *text = saved;
 }
 
+// The touch gestures' help on the loading screen (screen_backdrop::TouchHelpShown, Android): a caption in the free lower part of
+// each of the picture's eight panels and a prompt over the sea, in the frame counter's font. The places come from the picture
+// (screens_wide/touchhelp.avif, 1914x822, fitted to the screen's height in wide_screen.h).
+// The panels inset by 6 pixels; the outer ones reach a little beyond the screen, so their captions stop 4 pixels from its edges.
+constexpr int kTouchHelpLeft[4] = {4, 205, 414, 623}, kTouchHelpWidth[4] = {175, 183, 183, 173};
+constexpr int kTouchHelpCaptionTop[2] = {199, 441}, kTouchHelpCaptionHeight = 52;
+constexpr int kTouchHelpPromptTop = 548;
+constexpr uint32_t kTouchHelpInk = 0x123a6e; // dark sea blue on the light panels
+constexpr const char* kTouchHelpKeys[8] = {"OBL_TOUCH_HELP_TAP", "OBL_TOUCH_HELP_DRAG", "OBL_TOUCH_HELP_HOLD", "OBL_TOUCH_HELP_SLIDER",
+        "OBL_TOUCH_HELP_SCROLL", "OBL_TOUCH_HELP_SPEED", "OBL_TOUCH_HELP_ZOOM", "OBL_TOUCH_HELP_PLACE"};
+
+void DrawTouchHelp(ui::GuiManager* gui)
+{
+    if (!ui::screen_backdrop::TouchHelpShown() || gui->m_renderer->m_width != 800 || gui->m_renderer->m_height != 600) return;
+    ui::TextRenderer* text = gui->m_textRenderers[kFrameCounterFont];
+    if (!text || !text->m_font) return;
+    const ui::TextRenderer saved = *text;
+    // The wrapped lines' step (text_renderer.h DrawWrapped), to centre a caption's lines in its space.
+    const int lineHeight = 2 - static_cast<int>(static_cast<double>(text->m_font->m_size) * -1.2000000476837158);
+    auto draw = [&](const char* key, int x, int y, int width, int height, uint32_t color) {
+        const Char16* line = ui::text_table::Lookup(key);
+        if (!line) return;
+        const int lines = ui::font_text::CountLines(text, line, static_cast<uint32_t>(width), 0);
+        ui::font_text::SetRect(text, x, y + std::max(0, (height - lines * lineHeight) / 2), width, height);
+        ui::font_text::SetColor(text, color);
+        ui::font_text::DrawWrapped(text, 0, 0, line);
+    };
+    ui::renderer::SetActiveSurface(gui->m_renderer, 0);
+    ui::font_text::SetAlign(text, 2); // centred
+    ui::font_text::SetOutlined(text, 0);
+    for (int i = 0; i < 8; ++i)
+        draw(kTouchHelpKeys[i], kTouchHelpLeft[i % 4], kTouchHelpCaptionTop[i / 4], kTouchHelpWidth[i % 4], kTouchHelpCaptionHeight,
+                kTouchHelpInk);
+    draw(ui::screen_backdrop::g_touchHelpLoading ? "OBL_TOUCH_HELP_LOADING" : "OBL_TOUCH_HELP_CONTINUE", 0, kTouchHelpPromptTop, 800,
+            2 * lineHeight, 0xffffff);
+    *text = saved;
+}
+
 // Everything the GUI draws over the presented world, in direct mode on the back buffer: an optional background capture, the mode's
 // overlay, the HUD bar with its widgets and the message balloon, radar, progress bar, the open dialogs from the last to the first, the
 // software cursor (clipped at the right and bottom edges), credits and tooltip. Mode 6 keeps only the cursor, credits and tooltip.
@@ -847,6 +888,7 @@ void DrawOverlay(ui::GuiManager* gui)
     }
     if (gui->m_credits) gui::CreditsDraw(reinterpret_cast<ui::GuiCredits*>(gui->m_credits));
     static_cast<ui::GuiTooltip*>(gui->m_tooltip)->Draw();
+    DrawTouchHelp(gui);
     DrawFrameCounter(gui);
     gui->m_renderer->m_directMode = 0;
 }

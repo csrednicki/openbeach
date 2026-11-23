@@ -158,18 +158,40 @@ OBL_TEST_CASE("touch.two_finger_drag_is_the_wheel")
     touch.Take();
     // Both fingers up by one notch: the list scrolls down (wheel units are negative).
     touch.FingerMove(1, 100, 300 - TouchGestures::kPixelsPerNotch, 50);
-    auto first = touch.Take(); // one finger moved, so the centre moved half
+    auto first = touch.Take(); // one finger moved, so the centre moved half: no whole notch yet
     touch.FingerMove(2, 180, 300 - TouchGestures::kPixelsPerNotch, 60);
     auto second = touch.Take();
-    OBL_CHECK_EQ(Kinds(first), "W");
+    OBL_CHECK_EQ(Kinds(first), "");
     OBL_CHECK_EQ(Kinds(second), "W");
-    const float total = WheelTotal(first) + WheelTotal(second);
-    OBL_CHECK(total < -0.99f && total > -1.01f);
+    OBL_CHECK_EQ(WheelTotal(second), -1.0f);
     OBL_CHECK(!touch.Panning());
     touch.FingerUp(2, 180, 250, 100);
     touch.FingerUp(1, 100, 250, 110);
     OBL_CHECK_EQ(Kinds(touch.Take()), ""); // no click, no right button
     OBL_CHECK(!touch.AnyFingerDown());
+}
+
+OBL_TEST_CASE("touch.a_slow_two_finger_drag_gives_one_wheel_event_a_notch")
+{
+    // Bug fix: every small motion was a wheel event of its own, and a building being placed turned once per event, so it spun.
+    TouchGestures touch;
+    touch.FingerDown(1, 100, 300, 0);
+    touch.FingerDown(2, 180, 300, 10);
+    touch.Take();
+    int events = 0;
+    float total = 0;
+    for (int step = 1; step <= 70; ++step) { // 3.5 notches down in 2.4-pixel steps of both fingers
+        const float y = 300 + step * 3.5f * TouchGestures::kPixelsPerNotch / 70;
+        touch.FingerMove(1, 100, y, 20 + step);
+        touch.FingerMove(2, 180, y, 20 + step);
+        for (const TouchAction& action : touch.Take())
+            if (action.kind == TouchAction::Kind::Wheel) {
+                ++events;
+                total += action.y;
+            }
+    }
+    OBL_CHECK_EQ(events, 3);
+    OBL_CHECK_EQ(total, 3.0f);
 }
 
 OBL_TEST_CASE("touch.two_finger_swipe_is_one_game_speed_step")
@@ -324,13 +346,17 @@ OBL_TEST_CASE("touch.placing_a_second_finger_turns_instead_of_pressing")
     touch.FingerDown(1, 100, 300, 0);
     touch.FingerDown(2, 180, 300, 10);
     touch.Take();
-    // Two fingers are the wheel (the preview turns), and lifting them places nothing.
+    // Two fingers are the wheel (the preview turns). Bug fix: the first finger then went dead, and lifting it placed nothing; now it
+    // goes on aiming once the second one leaves, and its lift places.
     touch.FingerMove(1, 100, 300 - 2 * TouchGestures::kPixelsPerNotch, 50);
     touch.FingerMove(2, 180, 300 - 2 * TouchGestures::kPixelsPerNotch, 60);
     OBL_CHECK(WheelTotal(touch.Take()) < -1.9f);
     touch.FingerUp(2, 180, 200, 100);
-    touch.FingerUp(1, 100, 200, 110);
     OBL_CHECK_EQ(Kinds(touch.Take()), "");
+    touch.FingerMove(1, 120, 210, 150);
+    OBL_CHECK_EQ(Kinds(touch.Take()), "M");
+    touch.FingerUp(1, 120, 210, 200);
+    OBL_CHECK_EQ(Kinds(touch.Take()), "M LD LU");
     // The first finger lifting first presses nothing.
     touch.FingerDown(3, 10, 10, 1000);
     touch.FingerDown(4, 60, 10, 1020);

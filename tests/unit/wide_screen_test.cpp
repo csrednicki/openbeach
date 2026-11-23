@@ -17,7 +17,8 @@ using obl::platform::WidePlacement;
 
 OBL_TEST_CASE("wide_screen.every_wide_picture_covers_the_screen")
 {
-    for (const char* key : {"credits", "deepred", "extrascreen", "frontscreen", "loading_1", "loading_2", "mainmenu", "scenarioscreen"}) {
+    for (const char* key :
+            {"credits", "deepred", "extrascreen", "frontscreen", "loading_1", "loading_2", "mainmenu", "scenarioscreen", "touchhelp"}) {
         const WidePlacement* p = FindWidePlacement(key);
         OBL_CHECK(p != nullptr);
         if (!p) continue;
@@ -51,9 +52,10 @@ OBL_TEST_CASE("wide_screen.the_frame_keeps_full_colour_where_it_shows_the_pictur
 {
     // A soft orange the 16 bits cannot hold; the second pixel was drawn over (a button).
     const uint32_t wide[2] = {0xffc87e3du, 0xffc87e3du};
-    const uint16_t frame[2] = {To16(wide[0], false), 0x07e0};
+    const uint16_t wide16[2] = {To16(wide[0], false), To16(wide[1], false)};
+    const uint16_t frame[2] = {wide16[0], 0x07e0};
     uint32_t out[2] = {};
-    FullColourFrame(frame, 2, wide, false, 2, 1, out);
+    FullColourFrame(frame, 2, wide, wide16, false, 2, 1, out);
     OBL_CHECK(out[0] == 0xffc87e3du);
     OBL_CHECK(out[1] == 0xff00ff00u && From16(0x07e0, false) == 0xff00ff00u);
     OBL_CHECK(From16(0xffff, true) == 0xffffffffu && From16(0, true) == 0xff000000u);
@@ -62,12 +64,12 @@ OBL_TEST_CASE("wide_screen.the_frame_keeps_full_colour_where_it_shows_the_pictur
 OBL_TEST_CASE("wide_screen.a_frame_shows_the_screen_or_the_game")
 {
     // 8x8: a quarter of the samples (every fourth pixel of every fourth row) on the picture is still the screen.
-    std::vector<uint32_t> wide(64, 0xff3080c0u);
-    std::vector<uint16_t> frame(64, To16(wide[0], false));
-    OBL_CHECK(ShowsWidePart(frame.data(), 8, wide.data(), false, 8, 8));
+    const std::vector<uint16_t> wide(64, To16(0xff3080c0u, false));
+    std::vector<uint16_t> frame(wide);
+    OBL_CHECK(ShowsWidePart(frame.data(), 8, wide.data(), 8, 8));
     for (int i = 0; i < 64; ++i)
         if (i != 0) frame[static_cast<size_t>(i)] = 0x1234; // 3 of the 4 samples drawn over
-    OBL_CHECK(ShowsWidePart(frame.data(), 8, wide.data(), false, 8, 8));
+    OBL_CHECK(ShowsWidePart(frame.data(), 8, wide.data(), 8, 8));
     frame[0] = 0x1234; // none left: the game
-    OBL_CHECK(!ShowsWidePart(frame.data(), 8, wide.data(), false, 8, 8));
+    OBL_CHECK(!ShowsWidePart(frame.data(), 8, wide.data(), 8, 8));
 }
